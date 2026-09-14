@@ -4,14 +4,62 @@ A self-contained, deterministic motion-graphics film rendered from code.
 No stock footage, no external assets, no AI-generated imagery — every frame is
 drawn as SVG and captured headlessly, so the output is byte-reproducible.
 
-**Output:** `out/when-every-minute-matters.mp4` — 1920×1080, 30 fps, 60.0 s, H.264, silent.
+**Output:** `out/when-every-minute-matters.mp4` — 1920×1080, 30 fps, 60.0 s, H.264 + AAC.
 
-## Why silent
+## Audio
 
-The source script is written for a 2.5–3 minute AV with a voice-over. This cut
-condenses it to 60 seconds and carries the VO as on-screen lines, which is the
-normal form for a concept animatic used to lock structure and timing before a
-voice session. See "Adding a voice-over" below.
+The film has a full mix: voice-over, a music bed and sound design, built from
+code like the picture.
+
+- **Voice-over** — synthesized offline with [Piper](https://github.com/rhasspy/piper)
+  (neural TTS, ONNX). The default voice is `en-us-ryan-high`. It is a **scratch
+  track**: good enough to lock timing and to show the film, not a substitute for
+  a voice artist. Swapping in a real recording is a one-line remux (below).
+- **Music bed** — a synthesized pad that changes chord on each scene boundary
+  (Am → F → C → G → Am → F → C), ducked ~5 dB under the voice.
+- **Sound design** — transition risers and sub drops on every cut, rotor hum
+  while a drone is in shot, UI blips on HUD elements, a hit under each super,
+  and a resolving chord into the end frame.
+
+Master is 48 kHz stereo, peak -0.4 dBFS, about -15 dBFS RMS.
+
+### Why the picture was re-timed
+
+The first cut's caption windows were set for reading speed, which is faster
+than speech — several lines could not be spoken in their slot. The caption
+track is now derived from the actual synthesized line durations, so subtitles
+and voice match frame for frame. Scenes 3, 4 and 5 run their voice ~10% brisk
+(Piper `length_scale` 0.89-0.92) because 60 seconds is genuinely tight for this
+script; see "Longer cut".
+
+### Rebuilding the audio
+
+Needs `piper-tts` and `numpy`, plus the voice model in `video/audio/.work/voices/`:
+
+```bash
+pip install piper-tts numpy
+mkdir -p video/audio/.work/voices && cd video/audio/.work/voices
+curl -LO https://github.com/rhasspy/piper/releases/download/v0.0.2/voice-en-us-ryan-high.tar.gz
+tar xzf voice-en-us-ryan-high.tar.gz && cd -
+
+python3 video/audio/synthesize_vo.py   # voices + timing schedule
+python3 video/audio/mix.py             # master.wav
+```
+
+`synthesize_vo.py` prints the solved schedule. If you change the copy, re-run it,
+paste the emitted `CAPS`/`SUPERS` arrays into `scene.html`, and re-render the
+picture so subtitles stay in sync.
+
+### Dropping in a real voice-over
+
+```bash
+ffmpeg -i out/when-every-minute-matters.mp4 -i vo.wav \
+  -c:v copy -c:a aac -b:a 192k -shortest out/with-vo.mp4
+```
+
+To remove the on-screen voice-over lines once real narration exists, empty the
+`CAPS` array in `scene.html` and re-render; supers and HUD text are separate and
+stay put.
 
 ## Structure
 
@@ -26,7 +74,7 @@ voice session. See "Adding a voice-over" below.
 | 06 | Connected ecosystem | 48.5 | 54.5 | Full network, selective corridors only |
 | — | Final vision + end frame | 54.5 | 60.0 | Vehicle returns to the customer, end card |
 
-Supers land at 30.2s, 39.8s and 46.6s.
+Supers land at 30.9s, 40.1s and 46.9s.
 
 ## Files
 
@@ -66,19 +114,6 @@ Render cost is roughly 0.4 s per frame, so a 60 s cut takes about 13 minutes.
   Each `build()` returns an `update(localTime)` that positions everything for that
   scene; nothing is stateful between frames.
 - **Palette** — the `C` object at the top.
-
-## Adding a voice-over
-
-The cut is built to take VO without re-timing: caption in/out points are the
-intended line reads. With a recorded track:
-
-```bash
-ffmpeg -i out/when-every-minute-matters.mp4 -i vo.wav \
-  -c:v copy -c:a aac -b:a 192k -shortest out/with-vo.mp4
-```
-
-To drop the on-screen VO lines once real voice-over exists, empty the `CAPS`
-array and re-render — the supers and HUD text are separate and will stay.
 
 ## Longer cut
 

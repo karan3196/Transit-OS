@@ -94,10 +94,13 @@ const labDot=E('circle',{cx:96,cy:92,r:4,fill:C.blue},labWrap);
 const labNum=T(labWrap,'01',{x:116,y:92,'font-size':16,'font-weight':700,'letter-spacing':3,fill:C.blue});
 const labTxt=T(labWrap,'',{x:150,y:92,'font-size':16,'font-weight':500,'letter-spacing':5,fill:C.mut});
 
-/* caption (VO) */
-const capWrap=G(fg,{opacity:0});
-const capBar=E('rect',{x:960,y:934,width:0,height:2,fill:C.blue,opacity:0.85},capWrap);
-const capTxt=T(capWrap,'',{x:960,y:982,'font-size':38,'font-weight':400,'text-anchor':'middle',fill:'#f2f6ff'});
+/* caption (VO) - two slots, so consecutive lines cross-fade */
+const capSlots=[0,1].map(()=>{
+  const w=G(fg,{opacity:0});
+  const bar=E('rect',{x:960,y:934,width:0,height:2,fill:C.blue,opacity:0.85},w);
+  const txt=T(w,'',{x:960,y:982,'font-size':38,'font-weight':400,'text-anchor':'middle',fill:'#f2f6ff'});
+  return {w,bar,txt};
+});
 
 /* super (statement card) */
 const supWrap=G(fg,{opacity:0});
@@ -878,29 +881,29 @@ addScene('final',54.5,60,'','',function(root){
    Voice-over caption track + supers
    ===================================================================== */
 const CAPS=[
-  [5.5,8.4,"It's not the journey that defines the experience."],
-  [8.6,10.8,"It's how quickly support arrives."],
-  [11.0,12.9,"Because when a vehicle stops… life doesn't."],
-  [13.5,16.0,"Sometimes a repair doesn't wait for hours of work."],
-  [16.2,18.0,"It waits for one part."],
-  [18.2,21.1,"One missing component can extend customer downtime."],
-  [22.0,25.1,"Imagine if urgent, lightweight components could move through the air."],
-  [25.3,27.7,"Not replacing traditional logistics — complementing it."],
-  [27.9,30.1,"Delivering critical parts faster, when every minute counts."],
-  [33.0,35.7,"Understanding the problem early improves response time."],
-  [35.9,37.9,"Drones can provide a first view of the situation."],
-  [38.1,39.7,"Helping technicians arrive better prepared."],
-  [42.0,44.3,"In emergencies, timely information matters."],
-  [44.5,46.5,"Live aerial visibility helps coordinate response."],
-  [49.0,51.5,"The opportunity isn't drones everywhere."],
-  [51.7,54.2,"It's using them where they create the greatest customer value."],
-  [54.9,56.5,"The future of mobility isn't about flying vehicles."],
-  [56.6,57.6,"It's about delivering care faster."]
+  [5.38,8.18,"It's not the journey that defines the experience."],
+  [8.2,10.2,"It's how quickly support arrives."],
+  [10.22,13.22,"Because when a vehicle stops… life doesn't."],
+  [13.38,16.3,"Sometimes a repair doesn't wait for hours of work."],
+  [16.32,17.74,"It waits for one part."],
+  [17.76,20.81,"One missing component can extend customer downtime."],
+  [21.88,25.28,"Imagine if urgent, lightweight components could move through the air."],
+  [25.29,28.49,"Not replacing traditional logistics — complementing it."],
+  [28.51,30.85,"Delivering critical parts faster, when every minute counts."],
+  [32.73,35.7,"Understanding the problem early improves response time."],
+  [35.72,38.56,"Drones can provide a first view of the situation."],
+  [38.58,40.05,"Helping technicians arrive better prepared."],
+  [41.73,44.38,"In emergencies, timely information matters."],
+  [44.4,46.85,"Live aerial visibility helps coordinate response."],
+  [48.88,51.07,"The opportunity isn't drones everywhere."],
+  [51.09,54.23,"It's using them where they create the greatest customer value."],
+  [54.53,57.61,"The future of mobility isn't about flying vehicles."],
+  [57.63,59.52,"It's about delivering care faster."],
 ];
 const SUPERS=[
-  [30.2,32.4,'Faster Parts. Faster Repairs.'],
-  [39.8,41.4,'Assess First. Respond Better.'],
-  [46.6,48.4,'Improved Visibility. Faster Coordination.']
+  [30.9,32.45,'Faster Parts. Faster Repairs.'],
+  [40.1,41.45,'Assess First. Respond Better.'],
+  [46.9,48.45,'Improved Visibility. Faster Coordination.'],
 ];
 
 /* =====================================================================
@@ -930,16 +933,20 @@ function seek(t){
   } else labWrap.setAttribute('opacity',0);
 
   /* captions */
-  let cap=null;
-  for(const c of CAPS) if(t>=c[0]-0.3&&t<=c[1]+0.25) cap=c;
-  if(cap){
-    const a=Math.min(P(t,cap[0]-0.26,cap[0]+0.04),1-P(t,cap[1]-0.05,cap[1]+0.22));
-    capWrap.setAttribute('opacity',a.toFixed(3));
-    if(capTxt.textContent!==cap[2]) capTxt.textContent=cap[2];
-    capTxt.setAttribute('transform',`translate(0,${lerp(16,0,eo(P(t,cap[0]-0.26,cap[0]+0.3))).toFixed(2)})`);
-    const bw=lerp(0,420,eo(P(t,cap[0]-0.2,cap[0]+0.45)));
-    capBar.setAttribute('x',960-bw/2); capBar.setAttribute('width',bw);
-  } else capWrap.setAttribute('opacity',0);
+  const capA=[0,0];
+  for(let k=0;k<CAPS.length;k++){
+    const c=CAPS[k];
+    if(t<c[0]-0.20||t>c[1]+0.20) continue;
+    const a=Math.min(P(t,c[0]-0.18,c[0]+0.02),1-P(t,c[1]-0.02,c[1]+0.18));
+    if(a<=capA[k%2]) continue;
+    capA[k%2]=a;
+    const sl=capSlots[k%2];
+    if(sl.txt.textContent!==c[2]) sl.txt.textContent=c[2];
+    sl.txt.setAttribute('transform',`translate(0,${lerp(14,0,eo(P(t,c[0]-0.18,c[0]+0.26))).toFixed(2)})`);
+    const bw=lerp(0,420,eo(P(t,c[0]-0.14,c[0]+0.42)));
+    sl.bar.setAttribute('x',960-bw/2); sl.bar.setAttribute('width',bw);
+  }
+  capSlots.forEach((sl,i)=>sl.w.setAttribute('opacity',capA[i].toFixed(3)));
 
   /* supers */
   let sup=null;
@@ -955,7 +962,7 @@ function seek(t){
   } else { supWrap.setAttribute('opacity',0); supScrim.setAttribute('opacity',0); }
 
   /* global fade in / out */
-  const fade=Math.min(P(t,0,0.7),1-P(t,59.2,60.0));
+  const fade=Math.min(P(t,0,0.7),1-P(t,59.45,60.0));
   svg.style.opacity=fade.toFixed(3);
 }
 window.seek=seek;

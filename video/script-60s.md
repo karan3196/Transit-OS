@@ -5,30 +5,38 @@ readable pace, so each scene keeps its strongest line and its super. Nothing in
 the claim set changed: every line below is the original wording, or the original
 wording tightened — no new claims about capability were introduced.
 
-| In | Out | Line | Source scene |
-|----|-----|------|--------------|
-| 5.5 | 8.4 | It's not the journey that defines the experience. | 1 |
-| 8.6 | 10.8 | It's how quickly support arrives. | 1 |
-| 11.0 | 12.9 | Because when a vehicle stops… life doesn't. | 1 |
-| 13.5 | 16.0 | Sometimes a repair doesn't wait for hours of work. | 2 |
-| 16.2 | 18.0 | It waits for one part. | 2 |
-| 18.2 | 21.1 | One missing component can extend customer downtime. | 2 |
-| 22.0 | 25.1 | Imagine if urgent, lightweight components could move through the air. | 3 |
-| 25.3 | 27.7 | Not replacing traditional logistics — complementing it. | 3 |
-| 27.9 | 30.1 | Delivering critical parts faster, when every minute counts. | 3 |
-| 30.2 | 32.4 | **SUPER — Faster Parts. Faster Repairs.** | 3 |
-| 33.0 | 35.7 | Understanding the problem early improves response time. | 4 |
-| 35.9 | 37.9 | Drones can provide a first view of the situation. | 4 |
-| 38.1 | 39.7 | Helping technicians arrive better prepared. | 4 |
-| 39.8 | 41.4 | **SUPER — Assess First. Respond Better.** | 4 |
-| 42.0 | 44.3 | In emergencies, timely information matters. | 5 |
-| 44.5 | 46.5 | Live aerial visibility helps coordinate response. | 5 |
-| 46.6 | 48.4 | **SUPER — Improved Visibility. Faster Coordination.** | 5 |
-| 49.0 | 51.5 | The opportunity isn't drones everywhere. | 6 |
-| 51.7 | 54.2 | It's using them where they create the greatest customer value. | 6 |
-| 54.9 | 56.5 | The future of mobility isn't about flying vehicles. | Final |
-| 56.6 | 57.6 | It's about delivering care faster. | Final |
-| 57.7 | 60.0 | **END FRAME** | Final |
+These are the **as-spoken** times, measured from the synthesized voice-over —
+the caption track in `scene.html` is derived from them, so subtitles and voice
+match. `scale` is Piper's `length_scale`: 1.000 is the voice's natural pace,
+lower is brisker. Scenes 3-5 sit near 0.89-0.92 because 60 seconds is tight for
+this script.
+
+| In | Out | Dur | Scale | Line |
+|----|-----|-----|-------|------|
+| 5.50 | 8.04 | 2.54 | 0.997 | It's not the journey that defines the experience. |
+| 8.32 | 10.06 | 1.74 | 0.997 | It's how quickly support arrives. |
+| 10.34 | 13.08 | 2.74 | 0.997 | Because when a vehicle stops… life doesn't. |
+| 13.50 | 16.16 | 2.66 | 1.000 | Sometimes a repair doesn't wait for hours of work. |
+| 16.44 | 17.60 | 1.16 | 1.000 | It waits for one part. |
+| 17.88 | 20.67 | 2.79 | 1.000 | One missing component can extend customer downtime. |
+| 22.00 | 25.14 | 3.13 | 0.899 | Imagine if urgent, lightweight components could move through the air. |
+| 25.41 | 28.35 | 2.94 | 0.899 | Not replacing traditional logistics — complementing it. |
+| 28.63 | 31.54 | 2.91 | 0.899 | Delivering critical parts faster, when every minute counts. |
+| 32.85 | 35.55 | 2.71 | 0.927 | Understanding the problem early improves response time. |
+| 35.84 | 38.42 | 2.59 | 0.927 | Drones can provide a first view of the situation. |
+| 38.70 | 40.81 | 2.10 | 0.927 | Helping technicians arrive better prepared. |
+| 41.85 | 44.24 | 2.39 | 0.936 | In emergencies, timely information matters. |
+| 44.52 | 47.16 | 2.63 | 0.936 | Live aerial visibility helps coordinate response. |
+| 49.00 | 50.93 | 1.93 | 1.000 | The opportunity isn't drones everywhere. |
+| 51.21 | 54.09 | 2.88 | 1.000 | It's using them where they create the greatest customer value. |
+| 54.65 | 57.47 | 2.82 | 0.954 | The future of mobility isn't about flying vehicles. |
+| 57.75 | 59.38 | 1.62 | 0.954 | It's about delivering care faster. |
+
+Supers (no voice under them once the line finishes): **30.90-32.45** Faster
+Parts. Faster Repairs. · **40.10-41.45** Assess First. Respond Better. ·
+**46.90-48.45** Improved Visibility. Faster Coordination. End frame from 57.7.
+
+Total speech 44.3 s across 18 lines, inside a 60.0 s film.
 
 ## Lines held back for the longer cut
 
