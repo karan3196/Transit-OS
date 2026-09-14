@@ -1,8 +1,17 @@
 # "When Every Minute Matters" — 60s concept animatic
 
-A self-contained, deterministic motion-graphics film rendered from code.
-No stock footage, no external assets, no AI-generated imagery — every frame is
-drawn as SVG and captured headlessly, so the output is byte-reproducible.
+A self-contained, deterministic film rendered from code. No stock footage, no
+external assets, no AI-generated imagery — every frame is drawn to a canvas and
+captured headlessly, so the output is byte-reproducible.
+
+`film.html` is the current cut and is **photographic** in intent: backlit
+silhouettes, volumetric light, atmospheric haze, depth of field, bloom, lens
+vignette, film grain and a handheld camera, graded split-tone. It carries no
+HUD and no subtitles — the voice-over is heard, and only the three supers and
+the end frame are set as type. 21 shots.
+
+`scene.html` is the earlier schematic/HUD cut, kept for reference. Render it
+with `render.mjs`; render the photographic cut with `render_film.mjs`.
 
 **Output:** `out/when-every-minute-matters.mp4` — 1920×1080, 30 fps, 60.0 s, H.264 + AAC.
 
@@ -23,14 +32,18 @@ code like the picture.
 
 Master is 48 kHz stereo, peak -0.4 dBFS, about -15 dBFS RMS.
 
-### Why the picture was re-timed
+### Timing
 
-The first cut's caption windows were set for reading speed, which is faster
-than speech — several lines could not be spoken in their slot. The caption
-track is now derived from the actual synthesized line durations, so subtitles
-and voice match frame for frame. Scenes 3, 4 and 5 run their voice ~10% brisk
+Line in/out points come from the actual synthesized durations, not from reading
+speed — the first cut's caption windows were set for reading, which is faster
+than speech, and several lines could not be spoken in their slot. Shots are cut
+to those measured line times. Scenes 3, 4 and 5 run their voice ~10% brisk
 (Piper `length_scale` 0.89-0.92) because 60 seconds is genuinely tight for this
 script; see "Longer cut".
+
+The mix's transition hits and rotor hum are keyed to the picture's act
+boundaries (5.30, 13.25, 21.60, 32.85, 41.85, 48.60, 54.60) — if you move a
+cut, move the matching entry in `audio/mix.py`.
 
 ### Rebuilding the audio
 

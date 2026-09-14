@@ -1,0 +1,1076 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>When Every Minute Matters</title>
+<style>html,body{margin:0;background:#000}canvas{display:block}</style></head>
+<body><canvas id="c" width="1920" height="1080"></canvas>
+<script>
+/* =====================================================================
+   "When Every Minute Matters" - photographic cut
+   Canvas 2D. window.seek(t) fully defines the frame at t.
+   Aesthetic: backlit silhouettes, volumetric light, atmospheric haze,
+   depth of field, lens flare, grain. No HUD, no subtitles - supers only.
+   ===================================================================== */
+const W=1920,H=1080,cv=document.getElementById('c'),X=cv.getContext('2d',{alpha:false});
+
+/* offscreen layers: bg gets blurred for depth of field */
+function mk(){const c=document.createElement('canvas');c.width=W;c.height=H;return c;}
+const Lbg=mk(),Lbgx=Lbg.getContext('2d');
+const Lfg=mk(),Lfgx=Lfg.getContext('2d');
+const Lgl=mk(),Lglx=Lgl.getContext('2d');   // glow / bloom pass
+
+const clamp=(v,a,b)=>v<a?a:v>b?b:v, lerp=(a,b,p)=>a+(b-a)*p;
+const P=(t,a,b)=>clamp((t-a)/((b-a)||1e-6),0,1);
+const eo=p=>1-Math.pow(1-p,3), eo5=p=>1-Math.pow(1-p,5), ei=p=>p*p*p;
+const eio=p=>p<.5?4*p*p*p:1-Math.pow(-2*p+2,3)/2;
+const TAU=Math.PI*2;
+
+/* deterministic value noise - used for handheld, clouds, flicker */
+function hash(n){const s=Math.sin(n*127.1)*43758.5453;return s-Math.floor(s);}
+function vnoise(x){const i=Math.floor(x),f=x-i,u=f*f*(3-2*f);return lerp(hash(i),hash(i+1),u);}
+function fbm(x){let v=0,a=.5,f=1;for(let i=0;i<4;i++){v+=a*vnoise(x*f);f*=2;a*=.5;}return v;}
+
+/* ---------------------------------------------------------------- paint */
+function grad(c,x0,y0,x1,y1,stops){
+  const g=c.createLinearGradient(x0,y0,x1,y1);
+  for(const [o,col] of stops) g.addColorStop(o,col);
+  return g;
+}
+function rgrad(c,x,y,r0,r1,stops){
+  const g=c.createRadialGradient(x,y,r0,x,y,r1);
+  for(const [o,col] of stops) g.addColorStop(o,col);
+  return g;
+}
+function glowDot(c,x,y,r,col,a){
+  c.save(); c.globalCompositeOperation='lighter';
+  c.fillStyle=rgrad(c,x,y,0,r,[[0,col],[0.35,col.replace('rgb','rgba').replace(')',',0.5)')],[1,'rgba(0,0,0,0)']]);
+  c.globalAlpha=a; c.beginPath(); c.arc(x,y,r,0,TAU); c.fill(); c.restore();
+}
+/* soft additive blob without needing rgba juggling */
+function blob(c,x,y,r,col,a){
+  c.save(); c.globalCompositeOperation='lighter'; c.globalAlpha=a;
+  const g=c.createRadialGradient(x,y,0,x,y,r);
+  g.addColorStop(0,col); g.addColorStop(1,'rgba(0,0,0,0)');
+  c.fillStyle=g; c.beginPath(); c.arc(x,y,r,0,TAU); c.fill(); c.restore();
+}
+/* volumetric cone of light */
+function beam(c,x,y,ang,len,spread,col,a){
+  c.save(); c.globalCompositeOperation='lighter'; c.globalAlpha=a;
+  c.translate(x,y); c.rotate(ang);
+  const g=c.createLinearGradient(0,0,len,0);
+  g.addColorStop(0,col); g.addColorStop(1,'rgba(0,0,0,0)');
+  c.fillStyle=g; c.beginPath(); c.moveTo(0,0);
+  c.lineTo(len,-len*spread); c.lineTo(len,len*spread); c.closePath(); c.fill();
+  c.restore();
+}
+
+/* sky with sun, haze bands and drifting cloud slabs */
+function sky(c,pal,sunX,sunY,sunR,t,cloud){
+  c.fillStyle=grad(c,0,0,0,H,pal); c.fillRect(0,0,W,H);
+  if(cloud) for(let i=0;i<9;i++){
+    const n=fbm(i*3.1+t*0.012), y=lerp(60,520,(i*0.113+n*0.25)%1);
+    const w=lerp(500,1500,hash(i*7.7)), x=((t*(6+i*2.5)+hash(i)*2400)%(W+w*2))-w;
+    c.save(); c.globalAlpha=0.10+0.16*n;
+    c.fillStyle=grad(c,0,y-70,0,y+70,[[0,'rgba(255,255,255,0)'],[.5,'rgba(255,228,200,0.9)'],[1,'rgba(255,255,255,0)']]);
+    c.beginPath(); c.ellipse(x,y,w,46+40*n,0,0,TAU); c.fill(); c.restore();
+  }
+  if(sunR>0){
+    blob(c,sunX,sunY,sunR*7,'rgba(255,190,120,0.55)',1);
+    blob(c,sunX,sunY,sunR*2.2,'rgba(255,235,205,0.95)',1);
+    c.save(); c.globalCompositeOperation='lighter'; c.fillStyle='rgba(255,246,230,0.95)';
+    c.beginPath(); c.arc(sunX,sunY,sunR,0,TAU); c.fill(); c.restore();
+  }
+}
+/* distance haze over everything drawn so far, below horizon */
+function hazeBand(c,y0,y1,col,a0,a1){
+  c.save(); c.fillStyle=grad(c,0,y0,0,y1,[[0,col.replace(')',`,${a0})`).replace('rgb','rgba')],
+                                          [1,col.replace(')',`,${a1})`).replace('rgb','rgba')]]);
+  c.fillRect(0,y0,W,y1-y0); c.restore();
+}
+
+/* ground plane in perspective: returns scale at a given screen y */
+function persp(horizon,y){ return clamp((y-horizon)/(H-horizon),0,1); }
+
+/* road receding to a vanishing point */
+function road(c,horizon,vpx,halfTop,halfBot,colRoad,t,dashSpeed,lit){
+  c.save();
+  c.fillStyle=colRoad;
+  c.beginPath();
+  c.moveTo(vpx-halfTop,horizon); c.lineTo(vpx+halfTop,horizon);
+  c.lineTo(vpx+halfBot,H); c.lineTo(vpx-halfBot,H); c.closePath(); c.fill();
+  /* wet/asphalt sheen */
+  c.globalCompositeOperation='lighter';
+  c.fillStyle=grad(c,0,horizon,0,H,[[0,'rgba(150,180,220,0.10)'],[1,'rgba(0,0,0,0)']]);
+  c.fill();
+  c.globalCompositeOperation='source-over';
+  /* centre dashes, spaced in perspective */
+  for(let i=0;i<26;i++){
+    let u=((i/26)+ (t*dashSpeed)%(1/26))%1;
+    u=Math.pow(u,2.6);                         // perspective bunching
+    const y=lerp(horizon,H,u), s=persp(horizon,y);
+    const w=lerp(halfTop,halfBot,u);
+    c.fillStyle=`rgba(238,232,214,${0.10+0.65*s})`;
+    const dw=Math.max(1,3*s+1.2), dh=Math.max(1,34*s);
+    c.fillRect(vpx-dw/2+ (0), y, dw, dh);
+    void w;
+  }
+  /* edge lines */
+  [-1,1].forEach(sgn=>{
+    c.beginPath(); c.moveTo(vpx+sgn*halfTop*0.92,horizon); c.lineTo(vpx+sgn*halfBot*0.94,H);
+    c.strokeStyle=`rgba(236,230,212,${lit?0.5:0.28})`; c.lineWidth=3; c.stroke();
+  });
+  c.restore();
+}
+
+/* ---------------------------------------------------------------- objects
+   Everything is drawn as a filled silhouette plus a rim light. Backlit
+   silhouettes are what make this read as photographed rather than drawn. */
+
+function carBody(c,s,col){
+  c.beginPath();
+  c.moveTo(-104*s,30*s);
+  c.lineTo(-104*s,6*s);
+  c.quadraticCurveTo(-102*s,-4*s,-88*s,-9*s);
+  c.lineTo(-58*s,-20*s);
+  c.quadraticCurveTo(-40*s,-42*s,-6*s,-44*s);
+  c.lineTo(30*s,-44*s);
+  c.quadraticCurveTo(66*s,-43*s,86*s,-21*s);
+  c.lineTo(98*s,-15*s);
+  c.quadraticCurveTo(106*s,-11*s,106*s,2*s);
+  c.lineTo(106*s,30*s);
+  c.closePath();
+  c.fillStyle=col; c.fill();
+}
+/* side-on car. dir=1 faces right. rim = rim-light colour */
+function car(c,x,y,s,col,rim,opt){
+  opt=opt||{};
+  c.save(); c.translate(x,y); if(opt.flip) c.scale(-1,1);
+  /* contact shadow */
+  c.save(); c.globalAlpha=0.55;
+  c.fillStyle=rgrad(c,0,30*s,0,120*s,[[0,'rgba(0,0,0,0.85)'],[1,'rgba(0,0,0,0)']]);
+  c.beginPath(); c.ellipse(0,32*s,118*s,16*s,0,0,TAU); c.fill(); c.restore();
+  carBody(c,s,col);
+  /* glass - slightly lighter than body so the cabin reads */
+  if(opt.glass){
+    c.save(); c.globalAlpha=0.55; c.fillStyle=opt.glass;
+    c.beginPath();
+    c.moveTo(-50*s,-19*s); c.quadraticCurveTo(-34*s,-38*s,-6*s,-39*s);
+    c.lineTo(30*s,-39*s); c.quadraticCurveTo(58*s,-38*s,74*s,-20*s);
+    c.closePath(); c.fill(); c.restore();
+  }
+  /* rim light along the roof and shoulder */
+  if(rim){
+    c.save(); c.globalCompositeOperation='lighter'; c.strokeStyle=rim;
+    c.lineWidth=Math.max(1.4,2.4*s); c.lineJoin='round';
+    c.beginPath();
+    c.moveTo(-58*s,-20*s); c.quadraticCurveTo(-40*s,-42*s,-6*s,-44*s);
+    c.lineTo(30*s,-44*s); c.quadraticCurveTo(66*s,-43*s,86*s,-21*s);
+    c.lineTo(98*s,-15*s); c.stroke(); c.restore();
+  }
+  /* wheels */
+  c.fillStyle='rgba(6,8,12,1)';
+  [[-58,30],[58,30]].forEach(([wx,wy])=>{
+    c.beginPath(); c.arc(wx*s,wy*s,23*s,0,TAU); c.fill();
+  });
+  c.restore();
+}
+
+/* quadcopter silhouette, 3/4 front. spin drives the rotor discs */
+function drone(c,x,y,s,col,spin,opt){
+  opt=opt||{};
+  c.save(); c.translate(x,y); if(opt.rot) c.rotate(opt.rot);
+  const arms=[[-46,-12,21],[46,-12,21],[-30,-21,15],[30,-21,15]];
+  c.strokeStyle=col; c.lineWidth=Math.max(1,3.2*s); c.lineCap='round';
+  arms.forEach(([ax,ay])=>{c.beginPath();c.moveTo(0,-2*s);c.lineTo(ax*s,ay*s);c.stroke();});
+  /* rotor discs - motion-blurred */
+  arms.forEach(([ax,ay,r],i)=>{
+    c.save(); c.translate(ax*s,ay*s);
+    c.globalAlpha=0.22+0.10*Math.sin(spin*3+i);
+    c.fillStyle=col;
+    c.beginPath(); c.ellipse(0,0,r*s,r*s*0.24,0,0,TAU); c.fill();
+    c.globalAlpha=0.9; c.strokeStyle=col; c.lineWidth=Math.max(0.8,1.6*s);
+    c.beginPath(); c.ellipse(0,0,r*s,r*s*0.24,0,0,TAU); c.stroke();
+    c.restore();
+  });
+  /* body */
+  c.fillStyle=col;
+  c.beginPath(); c.roundRect?c.roundRect(-18*s,-12*s,36*s,21*s,8*s):c.rect(-18*s,-12*s,36*s,21*s);
+  c.fill();
+  c.beginPath(); c.arc(0,13*s,6.5*s,0,TAU); c.fill();
+  if(opt.payload){ c.fillStyle=opt.payload; c.fillRect(-13*s,17*s,26*s,19*s); }
+  /* navigation lights */
+  if(opt.nav){
+    blob(c,-46*s,-12*s,26*s,'rgba(255,70,90,0.95)',0.85);
+    blob(c, 46*s,-12*s,26*s,'rgba(90,255,170,0.95)',0.85);
+  }
+  c.restore();
+}
+
+/* standing human silhouette. Kept small/backlit - never a close-up. */
+function figure(c,x,y,h,col,pose){
+  pose=pose||0;
+  const u=h/100;
+  c.save(); c.translate(x,y); c.fillStyle=col; c.strokeStyle=col;
+  c.lineCap='round'; c.lineJoin='round';
+  c.lineWidth=10*u;                                            // legs
+  c.beginPath(); c.moveTo(-4*u,-46*u); c.lineTo(-7*u,-24*u); c.lineTo(-6*u,-2*u); c.stroke();
+  c.beginPath(); c.moveTo(5*u,-46*u); c.lineTo(8*u,-24*u); c.lineTo(9*u,-2*u); c.stroke();
+  c.beginPath();                                               // torso
+  c.moveTo(-11*u,-78*u); c.quadraticCurveTo(0,-83*u,11*u,-78*u);
+  c.quadraticCurveTo(14*u,-60*u,10*u,-43*u);
+  c.quadraticCurveTo(0,-39*u,-10*u,-43*u);
+  c.quadraticCurveTo(-14*u,-60*u,-11*u,-78*u); c.closePath(); c.fill();
+  c.fillRect(-3.2*u,-87*u,6.4*u,9*u);                          // neck
+  c.beginPath(); c.ellipse(0,-93*u,7.6*u,8.8*u,0,0,TAU); c.fill();
+  c.lineWidth=7.4*u;                                           // arms
+  if(pose===1){
+    c.beginPath(); c.moveTo(10*u,-75*u); c.lineTo(17*u,-63*u); c.lineTo(9*u,-87*u); c.stroke();
+    c.beginPath(); c.moveTo(-10*u,-75*u); c.lineTo(-14*u,-53*u); c.lineTo(-11*u,-42*u); c.stroke();
+  } else if(pose===2){
+    c.beginPath(); c.moveTo(10*u,-75*u); c.lineTo(22*u,-64*u); c.lineTo(34*u,-66*u); c.stroke();
+    c.beginPath(); c.moveTo(-10*u,-75*u); c.lineTo(-14*u,-52*u); c.stroke();
+  } else {
+    c.beginPath(); c.moveTo(-10*u,-75*u); c.lineTo(-15*u,-53*u); c.lineTo(-12*u,-40*u); c.stroke();
+    c.beginPath(); c.moveTo(10*u,-75*u); c.lineTo(15*u,-53*u); c.lineTo(12*u,-40*u); c.stroke();
+  }
+  c.restore();
+}
+
+/* skyline band: layered, hazier with distance */
+const _skyCache=new Map();
+function skyline(c,baseY,hgt,col,seed,alpha,lights,t){
+  const key=baseY+'|'+hgt+'|'+col+'|'+seed+'|'+(lights?1:0);
+  let cn=_skyCache.get(key);
+  if(!cn){
+    cn=document.createElement('canvas'); cn.width=W+240; cn.height=H;
+    const k=cn.getContext('2d');
+    k.fillStyle=col;
+    let x=-60;
+    for(let i=0;x<W+200;i++){
+      const w=lerp(60,190,hash(seed+i*1.7)), h=lerp(hgt*0.35,hgt,hash(seed+i*3.3));
+      k.fillStyle=col;
+      k.fillRect(x,baseY-h,w,h);
+      const r=hash(seed+i*11.3);
+      if(r>0.72) k.fillRect(x+w*0.18,baseY-h-lerp(14,44,r),w*0.34,lerp(14,44,r));
+      else if(r>0.52) k.fillRect(x+w*0.62,baseY-h-lerp(10,30,r),4,lerp(22,60,r));
+      if(r<0.22) k.fillRect(x-6,baseY-h*0.62,w+12,7);
+      if(lights){
+        k.fillStyle='rgb(255,208,150)';
+        for(let m=0;m<Math.floor(h/34);m++) for(let j=0;j<Math.floor(w/30);j++){
+          if(hash(seed+i*13+m*7+j*3)>0.62){
+            k.globalAlpha=0.45+0.55*hash(seed+i+m*5+j);
+            k.fillRect(x+8+j*30,baseY-h+12+m*34,7,9);
+          }
+        }
+        k.globalAlpha=1;
+      }
+      x+=w+lerp(10,40,hash(seed+i*5.1));
+    }
+    _skyCache.set(key,cn);
+  }
+  c.save(); c.globalAlpha=alpha; c.drawImage(cn,0,0); c.restore();
+}
+
+/* dust motes / rain, drifting in the light */
+function motes(c,t,n,col,a,drift,area){
+  c.save(); c.globalCompositeOperation='lighter';
+  for(let i=0;i<n;i++){
+    const sx=hash(i*1.3), sy=hash(i*7.7);
+    const x=((sx*W + t*drift*(0.4+sy))%(W+120))-60;
+    const y=area[1]+((sy*(area[3]-area[1]) + t*8*(0.3+sx))%(area[3]-area[1]));
+    const r=lerp(1.0,2.8,hash(i*3.1));
+    c.globalAlpha=a*(0.25+0.75*Math.abs(Math.sin(t*0.9+i)));
+    c.fillStyle=col; c.beginPath(); c.arc(x,y,r,0,TAU); c.fill();
+  }
+  c.restore();
+}
+
+/* =====================================================================
+   Shots
+   ===================================================================== */
+const SC=mk(), S=SC.getContext('2d');            // scene, pre-grade
+const SHOTS=[];
+function shot(t0,t1,draw){ SHOTS.push({t0,t1,draw}); }
+
+const SKY_DAWN=[[0,'#101d38'],[0.42,'#3a3550'],[0.72,'#9a6048'],[1,'#e0a271']];
+const SKY_GOLD=[[0,'#1d3050'],[0.40,'#4a4a63'],[0.74,'#b8734a'],[1,'#f0bb7c']];
+const SKY_DUSK=[[0,'#0a1228'],[0.45,'#1c2142'],[0.80,'#4b3350'],[1,'#8a5354']];
+const SKY_NIGHT=[[0,'#03050c'],[0.55,'#070c18'],[1,'#0e1626']];
+const SKY_DAY=[[0,'#2e5c94'],[0.5,'#7fa6c8'],[1,'#cfd8dc']];
+
+/* 01 - dawn highway, title plate ------------------------------------- */
+shot(0,5.30,(c,lt,t)=>{
+  const hz=560;
+  sky(c,SKY_DAWN,1290,520,42,t,true);
+  skyline(c,hz+6,110,'#0d1526',3.1,0.55,false,t);
+  /* tree line */
+  c.save(); c.fillStyle='#0a1220'; c.globalAlpha=0.9;
+  for(let x=-40;x<W+60;x+=34){ const h=lerp(26,70,fbm(x*0.02+4));
+    c.beginPath(); c.ellipse(x,hz+16,26,h*0.6,0,0,TAU); c.fill(); }
+  c.restore();
+  hazeBand(c,hz-140,hz+70,'rgb(226,168,124)',0.0,0.42);
+  /* fields */
+  c.fillStyle=grad(c,0,hz,0,H,[[0,'#16202c'],[1,'#070b12']]); c.fillRect(0,hz,W,H-hz);
+  road(c,hz+8,960,17,760,'#12161f',t,0.16,false);
+  /* the car, receding */
+  const p=eio(P(lt,0,5.3));
+  const s=lerp(1.20,0.56,p), y=lerp(915,690,p);
+  car(c,960+lerp(30,6,p),y,s,'#080c14','rgba(255,196,140,0.85)',{glass:'#1b2536'});
+  blob(c,960-40*s,y-6*s,60*s,'rgba(255,90,70,0.9)',0.55);
+  blob(c,960+40*s,y-6*s,60*s,'rgba(255,90,70,0.9)',0.55);
+  /* a drone, very high and small */
+  drone(c,lerp(300,1500,P(lt,0,5.3)),196,0.42,'rgba(10,14,22,0.85)',t*30,{});
+  motes(c,t,50,'rgba(255,214,170,1)',0.20,16,[0,380,W,980]);
+});
+
+/* 02 - showroom handover, backlit ------------------------------------ */
+shot(5.30,8.20,(c,lt,t)=>{
+  c.fillStyle='#090c12'; c.fillRect(0,0,W,H);
+  /* window wall */
+  c.save(); c.filter='blur(2px)';
+  c.fillStyle=grad(c,0,120,0,760,[[0,'#ffd9a8'],[0.6,'#f0b878'],[1,'#b07a52']]);
+  c.fillRect(150,120,1620,640);
+  c.restore();
+  /* mullions */
+  c.fillStyle='#0a0d14';
+  for(let x=150;x<=1770;x+=270) c.fillRect(x-9,110,18,660);
+  c.fillRect(140,752,1640,16);
+  /* light spill on the floor */
+  c.fillStyle=grad(c,0,760,0,H,[[0,'rgba(255,206,150,0.40)'],[1,'rgba(255,190,130,0.02)']]);
+  c.fillRect(0,760,W,H-760);
+  /* floor reflection of the window */
+  c.save(); c.globalAlpha=0.16; c.filter='blur(9px)';
+  c.fillStyle='#f0b878'; c.fillRect(200,770,1520,190); c.restore();
+  /* car + family, silhouetted */
+  car(c,1330,930,1.80,'#05070c','rgba(255,198,150,0.85)',{});
+  figure(c,470,946,330,'#05070c',0);
+  figure(c,616,940,318,'#05070c',2);
+  figure(c,724,950,214,'#05070c',0);
+  /* clock */
+  c.save(); c.strokeStyle='rgba(255,222,180,0.5)'; c.lineWidth=5;
+  c.beginPath(); c.arc(1700,236,44,0,TAU); c.stroke();
+  c.beginPath(); c.moveTo(1700,236); c.lineTo(1700,206); c.stroke();
+  c.beginPath(); c.moveTo(1700,236); c.lineTo(1700+Math.sin(t*1.2)*26,236-Math.cos(t*1.2)*26); c.stroke();
+  c.restore();
+  beam(c,600,90,1.15,1300,0.12,'rgba(255,214,164,0.22)',1);
+  beam(c,1140,90,1.28,1200,0.10,'rgba(255,214,164,0.18)',1);
+  motes(c,t,120,'rgba(255,224,186,1)',0.30,10,[200,220,W,940]);
+});
+
+/* 03 - stranded on the highway --------------------------------------- */
+shot(8.20,10.25,(c,lt,t)=>{
+  const hz=520;
+  sky(c,SKY_GOLD,540,470,36,t,true);
+  skyline(c,hz+10,74,'#101a2c',9.2,0.45,false,t);
+  hazeBand(c,hz-120,hz+60,'rgb(236,186,132)',0,0.40);
+  c.fillStyle=grad(c,0,hz,0,H,[[0,'#2a3040'],[1,'#11161f']]); c.fillRect(0,hz,W,H-hz);
+  road(c,hz+6,1180,20,1500,'#1d2430',t,0.06,true);
+  blob(c,540,560,760,'rgba(255,190,130,1)',0.26);
+  /* guard rail */
+  c.strokeStyle='rgba(180,190,200,0.35)'; c.lineWidth=5;
+  c.beginPath(); c.moveTo(0,742); c.lineTo(W,690); c.stroke();
+  car(c,660,900,2.05,'#06090f','rgba(255,206,150,0.9)',{glass:'#141c2a'});
+  figure(c,1010,916,300,'#06090f',1);
+  /* hazards */
+  const hz1=(Math.sin(t*5.2)>0)?1:0.12;
+  blob(c,660-200,852,86,'rgba(255,150,40,1)',0.8*hz1);
+  blob(c,660+200,852,86,'rgba(255,150,40,1)',0.8*hz1);
+  /* passing traffic streaks */
+  for(let i=0;i<3;i++){
+    const u=((t*0.55+i*0.37)%1);
+    const y=lerp(hz+40,640,i/3), s=lerp(0.10,0.26,u);
+    blob(c,lerp(W+120,-120,u),y,70*s,'rgba(255,236,200,1)',0.35);
+  }
+  motes(c,t,40,'rgba(255,220,180,1)',0.16,26,[0,420,W,900]);
+});
+
+/* 04 - service reception --------------------------------------------- */
+shot(10.25,13.25,(c,lt,t)=>{
+  c.fillStyle='#0a0e15'; c.fillRect(0,0,W,H);
+  c.save(); c.filter='blur(10px)';
+  c.fillStyle=grad(c,0,60,0,700,[[0,'#cfe0ea'],[1,'#8ba4b8']]);
+  c.fillRect(980,60,900,700); c.restore();
+  c.fillStyle='#080b11'; c.fillRect(960,40,20,740);
+  /* counter */
+  c.fillStyle='#0c1119'; c.fillRect(0,800,W,H-800);
+  c.fillStyle=grad(c,0,790,0,820,[[0,'rgba(255,222,180,0.5)'],[1,'rgba(0,0,0,0)']]);
+  c.fillRect(0,790,W,40);
+  /* advisor + customer, backlit by the window */
+  figure(c,1210,842,392,'#06080e',2);
+  figure(c,1560,842,374,'#06080e',0);
+  /* wall clock, ticking */
+  c.save(); c.strokeStyle='rgba(210,228,240,0.45)'; c.lineWidth=6;
+  c.beginPath(); c.arc(430,300,66,0,TAU); c.stroke();
+  const a=Math.floor(t*2)/2;
+  c.beginPath(); c.moveTo(430,300); c.lineTo(430+Math.sin(a)*46,300-Math.cos(a)*46); c.stroke();
+  c.beginPath(); c.moveTo(430,300); c.lineTo(430+Math.sin(a*0.1)*30,300-Math.cos(a*0.1)*30); c.stroke();
+  c.restore();
+  beam(c,1500,0,1.9,1100,0.14,'rgba(190,220,245,0.16)',1);
+  motes(c,t,90,'rgba(220,236,250,1)',0.22,8,[900,120,W,900]);
+});
+
+/* 05 - workshop, car on the lift -------------------------------------- */
+shot(13.25,16.35,(c,lt,t)=>{
+  c.fillStyle='#080b11'; c.fillRect(0,0,W,H);
+  /* high windows */
+  for(let i=0;i<4;i++){
+    const x=180+i*440;
+    c.save(); c.filter='blur(3px)'; c.fillStyle='rgba(210,232,250,0.92)';
+    c.fillRect(x,90,250,150); c.restore();
+    beam(c,x+125,240,1.42,1150,0.16,'rgba(200,224,248,0.16)',1);
+  }
+  c.fillStyle=grad(c,0,760,0,H,[[0,'#12171f'],[1,'#070a0f']]); c.fillRect(0,760,W,H-760);
+  /* lift posts */
+  c.fillStyle='#0d1119'; c.fillRect(560,600,26,300); c.fillRect(1330,600,26,300);
+  c.fillStyle='#111722'; c.fillRect(560,690,796,18);
+  /* car raised on the lift */
+  car(c,940,664,2.00,'#05080d','rgba(206,230,252,0.8)',{glass:'#101823'});
+  /* work lamp pool under it */
+  blob(c,1030,760,240,'rgba(255,206,140,1)',0.35);
+  figure(c,1290,930,330,'#05080d',2);
+  /* tool chest */
+  c.fillStyle='#0e131c'; c.fillRect(300,800,170,110);
+  c.fillStyle='rgba(210,70,60,0.5)'; c.fillRect(300,800,170,10);
+  motes(c,t,130,'rgba(226,240,255,1)',0.26,9,[100,150,W,940]);
+});
+
+/* 06 - the one part, on the bench -------------------------------------- */
+shot(16.35,17.80,(c,lt,t)=>{
+  c.fillStyle='#06080d'; c.fillRect(0,0,W,H);
+  /* out-of-focus workshop behind */
+  c.save(); c.filter='blur(26px)';
+  for(let i=0;i<14;i++){
+    const x=hash(i*3.7)*W, y=lerp(60,520,hash(i*9.1)), r=lerp(40,130,hash(i*5.3));
+    c.globalAlpha=0.18+0.30*hash(i*2.2);
+    c.fillStyle=i%3===0?'#ffcf94':'#7fa8cc';
+    c.beginPath(); c.arc(x,y,r,0,TAU); c.fill();
+  }
+  c.restore();
+  beam(c,1780,120,2.55,1500,0.10,'rgba(255,216,168,0.26)',1);
+  /* bench */
+  c.fillStyle=grad(c,0,700,0,H,[[0,'#161c25'],[1,'#080b10']]); c.fillRect(0,700,W,H-700);
+  c.save(); c.globalCompositeOperation='lighter';
+  c.fillStyle=grad(c,0,698,0,716,[[0,'rgba(255,214,166,0.5)'],[1,'rgba(0,0,0,0)']]);
+  c.fillRect(0,698,W,24); c.restore();
+  blob(c,1010,742,470,'rgba(255,206,146,1)',0.50);
+  /* the component, large and catching the key light */
+  c.save(); c.translate(1010,706); c.rotate(-0.07);
+  c.fillStyle='rgba(0,0,0,0.6)';
+  c.beginPath(); c.ellipse(6,34,150,20,0,0,TAU); c.fill();
+  c.fillStyle=grad(c,-130,-70,130,40,[[0,'#2b3646'],[0.5,'#10161f'],[1,'#222c3a']]);
+  c.beginPath(); c.moveTo(-130,26); c.lineTo(-112,-54); c.lineTo(104,-62);
+  c.lineTo(132,20); c.lineTo(96,34); c.closePath(); c.fill();
+  c.strokeStyle='rgba(255,232,190,0.92)'; c.lineWidth=3.4;
+  c.beginPath(); c.moveTo(-112,-54); c.lineTo(104,-62); c.stroke();
+  c.strokeStyle='rgba(255,226,180,0.4)'; c.lineWidth=2.2;
+  c.beginPath(); c.moveTo(-130,26); c.lineTo(132,20); c.stroke();
+  c.fillStyle='rgba(140,170,205,0.30)'; c.fillRect(-86,-42,66,34);
+  c.fillStyle='rgba(255,224,180,0.16)'; c.fillRect(10,-46,72,30);
+  c.restore();
+  /* a hand entering from the left, reaching for it */
+  const hp=eio(P(lt,0.35,1.35));
+  c.save(); c.translate(lerp(-300,120,hp),712);
+  c.beginPath();
+  c.moveTo(-520,250); c.quadraticCurveTo(-240,186,-60,88);
+  c.quadraticCurveTo(20,40,100,50); c.quadraticCurveTo(148,58,134,96);
+  c.quadraticCurveTo(198,78,200,118); c.quadraticCurveTo(198,156,134,164);
+  c.quadraticCurveTo(40,176,-34,218); c.quadraticCurveTo(-130,268,-240,306);
+  c.lineTo(-520,330); c.closePath();
+  c.fillStyle=grad(c,-300,60,120,300,[[0,'#0c131c'],[1,'#05070c']]); c.fill();
+  c.strokeStyle='rgba(255,214,166,0.72)'; c.lineWidth=3; c.stroke();
+  c.restore();
+  motes(c,t,60,'rgba(255,226,190,1)',0.26,7,[400,220,W,900]);
+});
+
+/* 07 - aerial, stalled traffic ----------------------------------------- */
+shot(17.80,21.60,(c,lt,t)=>{
+  c.fillStyle='#141a22'; c.fillRect(0,0,W,H);
+  c.save(); c.translate(0,-lt*16); c.rotate(-0.035);
+  /* carriageway */
+  c.fillStyle='#1c222c'; c.fillRect(-200,150,W+400,760);
+  c.fillStyle='#0d1219'; c.fillRect(-200,520,W+400,34);
+  c.fillStyle='rgba(232,226,208,0.42)';
+  for(let i=0;i<24;i++){ c.fillRect(-200+i*110,404,58,7); c.fillRect(-200+i*110,668,58,7); }
+  /* vehicles, nose to tail */
+  for(let lane=0;lane<4;lane++){
+    const ly=236+lane*168, dir=lane<2?1:-1;
+    for(let i=0;i<15;i++){
+      const x=((i*146 + lane*38 + t*(lane===1?26:7)*dir)%(W+500))-220;
+      c.save(); c.translate(x,ly);
+      c.fillStyle='rgba(0,0,0,0.5)';
+      c.beginPath(); c.ellipse(8,16,74,22,0,0,TAU); c.fill();
+      const tone=['#1d2735','#2a3342','#151d28','#333b48'][(i+lane)%4];
+      c.fillStyle=tone;
+      c.beginPath(); c.roundRect?c.roundRect(-62,-30,124,60,11):c.rect(-62,-30,124,60); c.fill();
+      c.fillStyle='rgba(150,186,220,0.34)';
+      c.beginPath(); c.roundRect?c.roundRect(-28,-22,44,44,6):c.rect(-28,-22,44,44); c.fill();
+      c.fillStyle='rgba(255,238,210,0.30)'; c.fillRect(-62,-24,7,48);
+      c.restore();
+      blob(c,x+(dir>0?66:-66),ly,26,'rgba(255,70,50,1)',0.55);
+    }
+  }
+  /* a delivery van, boxed in */
+  c.save(); c.translate(760,404); c.fillStyle='rgba(0,0,0,0.5)';
+  c.beginPath(); c.ellipse(10,22,108,26,0,0,TAU); c.fill();
+  c.fillStyle='#cfd6de'; c.fillRect(-96,-36,192,72);
+  c.fillStyle='#9aa6b4'; c.fillRect(56,-30,36,60);
+  c.restore();
+  c.restore();
+  /* long shadows from buildings at the edges */
+  c.save(); c.globalAlpha=0.55; c.fillStyle='#05080d';
+  c.fillRect(0,0,W,120); c.fillRect(0,H-90,W,90); c.restore();
+  hazeBand(c,0,H,'rgb(226,172,126)',0.20,0.03);
+  blob(c,1560,120,760,'rgba(255,196,140,1)',0.34);
+});
+
+/* 08 - parts hub, loading the drone ------------------------------------ */
+shot(21.60,25.30,(c,lt,t)=>{
+  c.fillStyle='#080b12'; c.fillRect(0,0,W,H);
+  c.save(); c.filter='blur(12px)';
+  c.fillStyle=grad(c,0,0,0,H,[[0,'#16202e'],[1,'#0a0e15']]); c.fillRect(0,0,W,H);
+  /* racking, out of focus */
+  for(let i=0;i<7;i++){ c.fillStyle='#1b2634'; c.fillRect(60+i*280,120,160,700);
+    for(let k=0;k<5;k++){ c.fillStyle='rgba(255,200,140,0.13)'; c.fillRect(60+i*280,150+k*140,160,10);} }
+  c.restore();
+  blob(c,1450,240,620,'rgba(210,234,255,1)',0.28);
+  c.fillStyle=grad(c,0,780,0,H,[[0,'#141a24'],[1,'#080b11']]); c.fillRect(0,780,W,H-780);
+  /* bench */
+  c.fillStyle='#0d1219'; c.fillRect(520,812,900,20);
+  /* drone on the bench, rotors idling up */
+  const spin=P(lt,1.6,3.4);
+  drone(c,1090,742,2.55,'#06090f',t*(6+spin*40),{payload:'#14202e',nav:spin>0.35});
+  /* worker placing the box */
+  figure(c,520,930,360,'#06090f',2);
+  const bp=eio(P(lt,0.3,1.5));
+  c.save(); c.fillStyle='#16222f'; c.strokeStyle='rgba(255,206,150,0.8)'; c.lineWidth=3;
+  const bx=lerp(770,1010,bp), by=lerp(742,796,bp);
+  c.fillRect(bx-22,by-16,44,32); c.strokeRect(bx-22,by-16,44,32); c.restore();
+  beam(c,1500,60,2.05,900,0.12,'rgba(200,226,252,0.14)',1);
+  motes(c,t,90,'rgba(220,236,252,1)',0.2,9,[300,200,W,940]);
+});
+
+/* 09 - lift-off against the sun ---------------------------------------- */
+shot(25.30,28.55,(c,lt,t)=>{
+  const hz=700;
+  sky(c,SKY_GOLD,1180,470,58,t,true);
+  skyline(c,hz,150,'#101929',2.7,0.42,false,t);
+  skyline(c,hz+34,96,'#0a121f',6.4,0.6,false,t);
+  hazeBand(c,hz-220,hz+80,'rgb(244,192,132)',0,0.46);
+  /* rooftop pad */
+  c.fillStyle='#0b1018'; c.fillRect(0,hz+40,W,H-hz-40);
+  c.strokeStyle='rgba(240,214,176,0.30)'; c.lineWidth=6;
+  c.beginPath(); c.ellipse(760,970,300,64,0,0,TAU); c.stroke();
+  /* the drone rising out of frame */
+  const p=eio(P(lt,0.25,3.0));
+  const y=lerp(950,290,p), s=lerp(2.7,1.75,p);
+  blob(c,760,y+90,260*s*0.5,'rgba(255,196,130,1)',0.25*(1-p));
+  drone(c,760,y,s,'#05080e',t*46,{payload:'#0b111a',nav:true});
+  motes(c,t,60,'rgba(255,216,168,1)',0.24,20,[0,300,W,1000]);
+  /* anamorphic flare across the sun */
+  c.save(); c.globalCompositeOperation='lighter';
+  c.fillStyle=grad(c,0,466,0,474,[[0,'rgba(0,0,0,0)'],[0.5,'rgba(255,200,150,0.30)'],[1,'rgba(0,0,0,0)']]);
+  c.fillRect(0,440,W,60); c.restore();
+});
+
+/* 10 - the corridor, flying ------------------------------------------- */
+shot(28.55,30.80,(c,lt,t)=>{
+  const hz=470;
+  sky(c,SKY_GOLD,1520,400,48,t,true);
+  hazeBand(c,hz-200,hz+120,'rgb(246,198,140)',0,0.5);
+  /* city far below, sliding past */
+  c.save(); c.translate(-((t*180)%460),0);
+  skyline(c,hz+120,120,'#111c2c',4.4,0.40,false,t);
+  c.restore();
+  c.save(); c.translate(-((t*420)%380),0);
+  skyline(c,hz+330,180,'#0a1120',8.8,0.62,false,t);
+  c.restore();
+  c.fillStyle=grad(c,0,hz+330,0,H,[[0,'#0a101c'],[1,'#05080e']]); c.fillRect(0,hz+330,W,H);
+  /* flyover streaking beneath */
+  c.save(); c.globalAlpha=0.5; c.strokeStyle='rgba(255,190,130,0.55)'; c.lineWidth=7;
+  for(let i=0;i<4;i++){ const y=880+i*52, off=((t*520+i*300)%(W+600))-300;
+    c.beginPath(); c.moveTo(off,y); c.lineTo(off+260,y-14); c.stroke(); }
+  c.restore();
+  /* the drone, held in frame - camera flies with it */
+  const bob=Math.sin(t*2.6)*7;
+  drone(c,900+Math.sin(t*0.7)*26,548+bob,3.4,'#06090f',t*52,{payload:'#0b111a',nav:true,rot:-0.05});
+  motes(c,t,70,'rgba(255,222,176,1)',0.22,120,[0,200,W,1000]);
+});
+
+/* 11 - lands, part fitted, keys handed over ---------------------------- */
+shot(30.80,32.85,(c,lt,t)=>{
+  const hz=600;
+  sky(c,SKY_GOLD,300,540,40,t,true);
+  skyline(c,hz+4,92,'#101a2a',5.5,0.44,false,t);
+  hazeBand(c,hz-140,hz+60,'rgb(246,198,142)',0,0.42);
+  c.fillStyle=grad(c,0,hz,0,H,[[0,'#151b24'],[1,'#080b11']]); c.fillRect(0,hz,W,H-hz);
+  /* workshop frontage */
+  c.fillStyle='#0b0f17'; c.fillRect(1120,330,800,320);
+  c.fillStyle=grad(c,0,360,0,640,[[0,'rgba(255,214,164,0.5)'],[1,'rgba(255,196,140,0.06)']]);
+  c.fillRect(1160,360,720,280);
+  /* landing pad */
+  c.strokeStyle='rgba(240,216,178,0.32)'; c.lineWidth=5;
+  c.beginPath(); c.ellipse(560,880,190,44,0,0,TAU); c.stroke();
+  const land=eio(P(lt,0,0.9));
+  drone(c,520,lerp(560,806,land),1.95,'#06090f',t*(46-36*land),{nav:true});
+  /* technician taking the box, customer receiving the car */
+  figure(c,760,930,316,'#06090f',2);
+  car(c,1540,948,1.55,'#05080d','rgba(255,206,152,0.9)',{glass:'#141d2b'});
+  figure(c,1180,948,306,'#05080d',2);
+  figure(c,1300,946,300,'#05080d',0);
+  motes(c,t,60,'rgba(255,220,176,1)',0.2,16,[0,300,W,980]);
+});
+
+/* 12 - rural breakdown ------------------------------------------------- */
+shot(32.85,35.75,(c,lt,t)=>{
+  const hz=505;
+  sky(c,SKY_DAY,1560,300,30,t,true);
+  c.fillStyle=grad(c,0,hz,0,H,[[0,'#2f4128'],[0.35,'#24331f'],[1,'#131a12']]);
+  c.fillRect(0,hz,W,H-hz);
+  hazeBand(c,hz-140,hz+50,'rgb(198,214,224)',0,0.55);
+  /* tree line */
+  c.save(); c.fillStyle='#18251a';
+  for(let x=-30;x<W+60;x+=46){const h=lerp(22,64,fbm(x*0.013+9));
+    c.beginPath(); c.ellipse(x,hz+8,30,h*0.62,0,0,TAU); c.fill();}
+  c.restore();
+  road(c,hz+4,1010,22,1320,'#1b2029',t,0.05,true);
+  car(c,700,908,2.05,'#0b1018','rgba(228,240,252,0.85)',{glass:'#1d2836'});
+  const fl=(Math.sin(t*5.4)>0)?1:0.12;
+  blob(c,700-200,860,88,'rgba(255,150,40,1)',0.75*fl);
+  blob(c,700+200,860,88,'rgba(255,150,40,1)',0.75*fl);
+  figure(c,1030,922,298,'#0b1018',0);
+  motes(c,t,30,'rgba(240,248,255,1)',0.12,22,[0,420,W,900]);
+});
+
+/* 13 - command centre --------------------------------------------------- */
+shot(35.75,38.60,(c,lt,t)=>{
+  c.fillStyle='#04060b'; c.fillRect(0,0,W,H);
+  /* the video wall */
+  c.save(); c.filter='blur(2.5px)';
+  const cells=[[120,90,700,420],[850,90,430,200],[1310,90,490,200],[850,310,950,200],
+               [120,530,520,230],[670,530,560,230],[1260,530,540,230]];
+  cells.forEach((r,i)=>{
+    c.fillStyle='#07172a'; c.fillRect(r[0],r[1],r[2],r[3]);
+    c.strokeStyle='rgba(70,150,215,0.45)'; c.lineWidth=2; c.strokeRect(r[0],r[1],r[2],r[3]);
+    if(i===0){                                   /* live map */
+      c.strokeStyle='rgba(90,190,250,0.30)'; c.lineWidth=2;
+      for(let k=0;k<7;k++){ c.beginPath(); c.moveTo(r[0],r[1]+40+k*54); c.lineTo(r[0]+r[2],r[1]+16+k*54); c.stroke(); }
+      for(let k=0;k<5;k++){ c.beginPath(); c.moveTo(r[0]+60+k*150,r[1]); c.lineTo(r[0]+20+k*150,r[1]+r[3]); c.stroke(); }
+      for(let k=0;k<6;k++){
+        const x=r[0]+80+((k*137+t*26)%(r[2]-120)), y=r[1]+70+((k*91)%(r[3]-120));
+        blob(c,x,y,26,k%2?'rgba(255,170,70,1)':'rgba(90,230,190,1)',0.75);
+      }
+    } else if(i===3){                            /* camera feed */
+      c.fillStyle='rgba(40,90,130,0.5)'; c.fillRect(r[0]+8,r[1]+8,r[2]-16,r[3]-16);
+      c.fillStyle='#0b1a28'; c.fillRect(r[0]+330,r[1]+96,260,70);
+      c.strokeStyle='rgba(255,180,70,0.85)'; c.lineWidth=3;
+      c.strokeRect(r[0]+300+Math.sin(t*1.1)*16,r[1]+72,300,110);
+    } else {
+      c.fillStyle='rgba(70,160,230,0.24)';
+      for(let j=0;j<5;j++) c.fillRect(r[0]+16,r[1]+22+j*34,lerp(50,r[2]-40,hash(i*5+j*3+Math.floor(t*1.2))),10);
+      if(i%3===1){ c.fillStyle='rgba(255,90,80,0.6)'; c.fillRect(r[0]+r[2]-70,r[1]+16,54,26); }
+    }
+  });
+  c.restore();
+  blob(c,960,400,1000,'rgba(80,170,240,1)',0.20);
+  /* desks and operators, backs to camera, lit by the wall */
+  c.fillStyle='#03050a'; c.fillRect(0,872,W,H-872);
+  c.save(); c.globalCompositeOperation='lighter';
+  c.fillStyle=grad(c,0,856,0,900,[[0,'rgba(110,190,250,0.42)'],[1,'rgba(0,0,0,0)']]);
+  c.fillRect(0,856,W,54); c.restore();
+  figure(c,560,1010,420,'#020408',0);
+  figure(c,1120,1000,404,'#020408',2);
+  figure(c,1560,1014,392,'#020408',0);
+  motes(c,t,70,'rgba(150,206,250,1)',0.16,7,[150,150,W,900]);
+});
+
+/* 14 - drone inbound, low over the road -------------------------------- */
+shot(38.60,40.00,(c,lt,t)=>{
+  const hz=500;
+  sky(c,SKY_DAY,1420,330,34,t,true);
+  c.fillStyle=grad(c,0,hz,0,H,[[0,'#2c3e26'],[1,'#131a12']]); c.fillRect(0,hz,W,H-hz);
+  hazeBand(c,hz-120,hz+40,'rgb(200,216,226)',0,0.5);
+  road(c,hz+2,960,26,1420,'#1b2029',t,0.55,true);
+  const p=eio(P(lt,0,1.4));
+  const s=lerp(0.7,3.9,p), y=lerp(470,624,p);
+  drone(c,960,y,s,'#0a1017',t*54,{nav:true});
+  c.save(); c.globalAlpha=0.25*p; c.fillStyle='rgba(0,0,0,0.7)';
+  c.beginPath(); c.ellipse(960,930,150*s*0.4,22*s*0.4,0,0,TAU); c.fill(); c.restore();
+  motes(c,t,40,'rgba(240,248,255,1)',0.14,160,[0,380,W,940]);
+});
+
+/* 15 - first view, straight down --------------------------------------- */
+shot(40.00,41.85,(c,lt,t)=>{
+  c.fillStyle='#26331f'; c.fillRect(0,0,W,H);
+  c.save(); c.translate(960,540); c.rotate(-0.22+lt*0.035); c.scale(1.55,1.55); c.translate(-960,-540);
+  /* fields */
+  for(let i=0;i<10;i++){ c.fillStyle=i%2?'#243019':'#2c3b22'; c.fillRect(-400,-300+i*180,2800,180); }
+  /* the carriageway */
+  c.fillStyle='#1c222b'; c.fillRect(-400,430,2800,260);
+  c.fillStyle='rgba(236,230,212,0.55)';
+  for(let i=0;i<22;i++) c.fillRect(-400+i*150+((lt*40)%150),552,72,9);
+  c.strokeStyle='rgba(236,230,212,0.4)'; c.lineWidth=5;
+  c.beginPath(); c.moveTo(-400,438); c.lineTo(2400,438); c.stroke();
+  c.beginPath(); c.moveTo(-400,682); c.lineTo(2400,682); c.stroke();
+  /* car from above */
+  c.save(); c.translate(830,505); c.fillStyle='#0d141c';
+  c.fillRect(-96,-38,192,76);
+  c.fillStyle='#1b2735'; c.fillRect(-40,-30,72,60);
+  c.restore();
+  const fl=(Math.sin(t*5.4)>0)?1:0.15;
+  blob(c,742,505,46,'rgba(255,150,40,1)',0.7*fl); blob(c,922,505,46,'rgba(255,150,40,1)',0.7*fl);
+  figure(c,980,520,42,'#0d141c',0);
+  /* the van arriving behind */
+  const vp=eio(P(lt,0.55,1.85));
+  c.save(); c.translate(lerp(1800,1180,vp),610); c.fillStyle='#101820';
+  c.fillRect(-104,-40,208,80); c.fillStyle='#1e2b3a'; c.fillRect(40,-32,58,64); c.restore();
+  c.restore();
+  blob(c,960,540,760,'rgba(255,224,180,1)',0.10);
+});
+
+/* 16 - night incident --------------------------------------------------- */
+shot(41.85,44.40,(c,lt,t)=>{
+  sky(c,SKY_NIGHT,0,0,0,t,false);
+  const hz=470;
+  skyline(c,hz+30,150,'#080d16',11.3,0.85,true,t);
+  c.fillStyle=grad(c,0,hz,0,H,[[0,'#0a0e16'],[1,'#05080d']]); c.fillRect(0,hz,W,H-hz);
+  road(c,hz+10,880,22,1600,'#0d1119',t,0.03,false);
+  /* wet reflections */
+  c.save(); c.globalAlpha=0.30; c.filter='blur(14px)';
+  blob(c,700,960,320,'rgba(255,60,50,1)',1);
+  blob(c,1230,980,300,'rgba(255,170,60,1)',1);
+  c.restore();
+  /* headlight beams through dust */
+  beam(c,1500,760,Math.PI*0.92,900,0.10,'rgba(255,240,210,0.32)',1);
+  beam(c,320,790,-0.06,820,0.09,'rgba(255,240,210,0.22)',1);
+  car(c,640,912,2.05,'#05070c','rgba(255,90,70,0.95)',{});
+  const f1=(Math.sin(t*6.2)>0)?1:0.1, f2=(Math.sin(t*6.2+2.1)>0)?1:0.1;
+  blob(c,640,806,130,'rgba(255,50,45,1)',0.8*f1);
+  blob(c,1180,820,140,'rgba(255,160,50,1)',0.75*f2);
+  figure(c,1040,936,262,'#04060b',0);
+  figure(c,1162,930,254,'#04060b',1);
+  motes(c,t,160,'rgba(255,214,170,1)',0.20,30,[0,500,W,1000]);
+});
+
+/* 17 - eyes up, drone rising at night ----------------------------------- */
+shot(44.40,46.80,(c,lt,t)=>{
+  sky(c,SKY_NIGHT,0,0,0,t,false);
+  const p=eio(P(lt,0,2.4));
+  /* the scene falls away below */
+  c.save(); c.translate(0,lerp(120,-420,p)); c.scale(lerp(1.0,0.55,p),lerp(1.0,0.55,p));
+  c.translate(960*(1-1/lerp(1,1,1))*0,0);
+  skyline(c,760,170,'#070c14',11.3,0.9,true,t);
+  c.fillStyle='#070a10'; c.fillRect(-400,760,W+800,600);
+  c.save(); c.rotate(-0.04);
+  c.fillStyle='#0c1018'; c.fillRect(-400,900,W+800,150); c.restore();
+  const f1=(Math.sin(t*6.2)>0)?1:0.1;
+  blob(c,760,930,190,'rgba(255,50,45,1)',0.95*f1);
+  blob(c,1120,946,200,'rgba(255,160,50,1)',0.9);
+  blob(c,980,938,560,'rgba(255,130,70,1)',0.34);
+  blob(c,900,944,900,'rgba(255,150,90,1)',0.14);
+  c.restore();
+  /* rotors in the near field, out of focus */
+  c.save(); c.filter='blur(13px)'; c.globalAlpha=0.32; c.fillStyle='#05080f';
+  c.beginPath(); c.ellipse(120,120,280,44,0.26,0,TAU); c.fill();
+  c.beginPath(); c.ellipse(1820,84,280,44,-0.26,0,TAU); c.fill(); c.restore();
+  blob(c,960,430,520,'rgba(110,150,210,1)',0.12);
+  drone(c,960,420,3.6,'#05080f',t*50,{nav:true});
+  motes(c,t,90,'rgba(180,210,250,1)',0.14,40,[0,0,W,1000]);
+});
+
+/* 18 - coordinated response, high and wide ------------------------------ */
+shot(46.80,48.60,(c,lt,t)=>{
+  c.fillStyle='#05080e'; c.fillRect(0,0,W,H);
+  skyline(c,H,260,'#070b13',21.7,0.75,true,t);
+  /* arterial roads as light trails */
+  const roads=[[-200,760,2200,560],[-200,300,2200,880],[820,-100,1120,1200]];
+  roads.forEach((r,k)=>{
+    c.save(); c.strokeStyle='rgba(120,150,200,0.10)'; c.lineWidth=54;
+    c.beginPath(); c.moveTo(r[0],r[1]); c.lineTo(r[2],r[3]); c.stroke(); c.restore();
+    for(let i=0;i<16;i++){
+      const u=((t*0.16+i/16+k*0.2)%1);
+      const x=lerp(r[0],r[2],u), y=lerp(r[1],r[3],u);
+      blob(c,x,y,30,k%2?'rgba(255,120,60,1)':'rgba(200,220,255,1)',0.45);
+    }
+  });
+  /* the incident */
+  const f1=(Math.sin(t*6.2)>0)?1:0.15;
+  blob(c,980,600,190,'rgba(255,60,50,1)',0.75*f1);
+  blob(c,980,600,480,'rgba(255,90,60,1)',0.22);
+  /* three units converging */
+  [[140,980,'rgba(255,70,70,1)'],[1830,250,'rgba(255,180,60,1)'],[300,180,'rgba(90,255,180,1)']]
+  .forEach((u,i)=>{
+    const q=eio(P(lt,0.2+i*0.22,1.8+i*0.12));
+    blob(c,lerp(u[0],980,q),lerp(u[1],600,q),34,u[2],0.9);
+    c.save(); c.globalAlpha=0.30; c.strokeStyle=u[2]; c.lineWidth=3;
+    c.setLineDash([14,12]); c.lineDashOffset=-t*40;
+    c.beginPath(); c.moveTo(u[0],u[1]); c.lineTo(980,600); c.stroke(); c.restore();
+  });
+  hazeBand(c,0,H,'rgb(60,90,140)',0.10,0.02);
+});
+
+/* 19 - the network, dusk from height ------------------------------------ */
+shot(48.60,54.60,(c,lt,t)=>{
+  sky(c,SKY_DUSK,120,240,34,t,true);
+  c.save(); c.translate(0,lerp(0,-30,P(lt,0,6)));
+  skyline(c,520,120,'#0d1526',3.3,0.35,true,t);
+  skyline(c,760,180,'#0a1120',7.7,0.55,true,t);
+  skyline(c,1040,240,'#070c18',12.1,0.8,true,t);
+  c.restore();
+  hazeBand(c,300,900,'rgb(150,110,120)',0.28,0.05);
+  /* arterials */
+  for(let k=0;k<4;k++){
+    const y=600+k*130;
+    c.save(); c.strokeStyle='rgba(150,170,210,0.07)'; c.lineWidth=40;
+    c.beginPath(); c.moveTo(-100,y); c.lineTo(W+100,y-60); c.stroke(); c.restore();
+    for(let i=0;i<14;i++){ const u=((t*0.09+i/14+k*0.17)%1);
+      blob(c,lerp(-100,W+100,u),lerp(y,y-60,u),22,k%2?'rgba(255,150,80,1)':'rgba(190,215,255,1)',0.35); }
+  }
+  /* the graphic layer is composited on top by the overlay pass */
+});
+
+/* 20 - back on the road ------------------------------------------------- */
+shot(54.60,57.75,(c,lt,t)=>{
+  const hz=560;
+  sky(c,SKY_GOLD,1080,500,56,t,true);
+  skyline(c,hz+8,86,'#111a2a',5.9,0.36,false,t);
+  c.save(); c.fillStyle='#16221a'; c.globalAlpha=0.9;
+  for(let x=-40;x<W+60;x+=40){const h=lerp(24,62,fbm(x*0.015+2));
+    c.beginPath(); c.ellipse(x,hz+14,28,h*0.6,0,0,TAU); c.fill();}
+  c.restore();
+  hazeBand(c,hz-180,hz+70,'rgb(250,204,146)',0,0.5);
+  c.fillStyle=grad(c,0,hz,0,H,[[0,'#1c2622'],[1,'#080c10']]); c.fillRect(0,hz,W,H-hz);
+  road(c,hz+6,960,20,900,'#161b24',t,0.42,false);
+  /* the car pulling away into the light */
+  const p=eio(P(lt,0,3.15));
+  const s=lerp(1.80,0.78,p), y=lerp(960,720,p);
+  car(c,960,y,s,'#070b11','rgba(255,210,158,0.9)',{glass:'#1a2330'});
+  blob(c,960-44*s,y-8*s,66*s,'rgba(255,90,70,1)',0.5);
+  blob(c,960+44*s,y-8*s,66*s,'rgba(255,90,70,1)',0.5);
+  /* the drone, small, heading the other way */
+  const dp=P(lt,0.2,3.0);
+  drone(c,lerp(700,300,dp),lerp(330,250,dp),lerp(0.72,0.42,dp),'rgba(8,12,18,0.9)',t*38,{});
+  /* sun flare as the car meets the light */
+  c.save(); c.globalCompositeOperation='lighter';
+  c.fillStyle=grad(c,0,496,0,504,[[0,'rgba(0,0,0,0)'],[0.5,`rgba(255,206,156,${0.16+0.2*p})`],[1,'rgba(0,0,0,0)']]);
+  c.fillRect(0,470,W,60); c.restore();
+  motes(c,t,70,'rgba(255,222,176,1)',0.26,24,[0,340,W,1000]);
+});
+
+/* 21 - end frame -------------------------------------------------------- */
+shot(57.75,60.0,(c,lt,t)=>{
+  c.fillStyle='#05070c'; c.fillRect(0,0,W,H);
+  blob(c,960,430,780,'rgba(40,90,150,1)',0.14);
+});
+
+/* =====================================================================
+   Post: bloom, split-tone grade, vignette, grain, handheld
+   ===================================================================== */
+const SC2=mk(), S2=SC2.getContext('2d');
+
+/* fixed grain plate, tiled with a per-frame offset */
+const NT=document.createElement('canvas'); NT.width=NT.height=512;
+(function(){
+  const n=NT.getContext('2d'), id=n.createImageData(512,512);
+  for(let i=0;i<512*512;i++){
+    const v=128+(hash(i*0.3719)-0.5)*96;
+    id.data[i*4]=id.data[i*4+1]=id.data[i*4+2]=v; id.data[i*4+3]=255;
+  }
+  n.putImageData(id,0,0);
+})();
+const GP=document.createElement('canvas'); GP.width=W+512; GP.height=H+512;
+(function(){ const g=GP.getContext('2d');
+  for(let y=0;y<H+512;y+=512) for(let x=0;x<W+512;x+=512) g.drawImage(NT,x,y);
+})();
+
+const BW=480,BH=270;
+const BL=document.createElement('canvas'); BL.width=BW; BL.height=BH;
+const Bx=BL.getContext('2d');
+
+function post(t){
+  const hx=(fbm(t*1.7)-0.5)*9, hy=(fbm(t*2.1+31)-0.5)*9, hr=(fbm(t*1.3+7)-0.5)*0.004;
+  X.save();
+  X.filter='contrast(1.06) saturate(0.96) brightness(1.10)';
+  X.translate(960+hx,540+hy); X.rotate(hr); X.scale(1.04,1.04); X.translate(-960,-540);
+  X.drawImage(SC,0,0);
+  X.restore();
+
+  Bx.clearRect(0,0,BW,BH);
+  Bx.save(); Bx.filter='blur(7px) brightness(1.45) contrast(1.3)';
+  Bx.drawImage(SC,0,0,BW,BH); Bx.restore();
+  X.save(); X.globalCompositeOperation='lighter'; X.globalAlpha=0.19;
+  X.imageSmoothingQuality='high'; X.drawImage(BL,0,0,W,H); X.restore();
+
+  X.save(); X.globalCompositeOperation='overlay'; X.globalAlpha=0.17;
+  X.fillStyle=grad(X,0,0,0,H,[[0,'#2f74ad'],[0.52,'#7f7f7f'],[1,'#cc8348']]);
+  X.fillRect(0,0,W,H); X.restore();
+}
+function vignetteGrain(t){
+  X.save(); X.globalCompositeOperation='multiply';
+  X.fillStyle=rgrad(X,960,520,380,1220,[[0,'rgb(255,255,255)'],[0.68,'rgb(214,214,222)'],[1,'rgb(112,112,132)']]);
+  X.fillRect(0,0,W,H); X.restore();
+
+  X.save(); X.globalCompositeOperation='overlay'; X.globalAlpha=0.085;
+  const f=Math.floor(t*30);
+  X.drawImage(GP,-Math.floor(hash(f*1.7)*512),-Math.floor(hash(f*3.1)*512));
+  X.restore();
+}
+
+/* =====================================================================
+   Type
+   ===================================================================== */
+function setType(px,weight,ls){
+  X.font=`${weight} ${px}px Inter, 'Liberation Sans', sans-serif`;
+  X.letterSpacing=`${ls||0}px`;
+}
+function scrim(a){
+  X.save(); X.fillStyle=grad(X,0,H-620,0,H,[[0,'rgba(0,0,0,0)'],[1,`rgba(0,0,0,${0.72*a})`]]);
+  X.fillRect(0,H-620,W,620); X.restore();
+}
+function rise(a,px){ return (1-eo5(a))*px; }
+
+function drawTitle(t){
+  const a=Math.min(P(t,0.7,1.5),1-P(t,4.3,5.0));
+  if(a<=0.002) return;
+  X.save(); X.globalAlpha=a; scrim(a);
+  X.textBaseline='alphabetic'; X.fillStyle='#3ae0ff';
+  setType(22,600,12);
+  X.globalAlpha=a*P(t,0.8,1.5);
+  X.fillText('A CONCEPT FILM',150,706);
+  X.fillStyle='#fff';
+  setType(96,800,-1);
+  [['WHEN EVERY MINUTE',806,1.05],['MATTERS',906,1.20]].forEach(([s,y,st])=>{
+    const p=P(t,st,st+0.9);
+    X.globalAlpha=a*P(t,st,st+0.55);
+    X.fillText(s,150,y+rise(p,42));
+  });
+  X.globalAlpha=a; X.fillStyle='#3ae0ff';
+  X.fillRect(150,954,lerp(0,260,eo(P(t,1.9,2.9))),3);
+  X.restore();
+}
+
+const SUPERS=[
+  [30.90,32.45,'Faster Parts.','Faster Repairs.'],
+  [40.10,41.45,'Assess First.','Respond Better.'],
+  [46.90,48.45,'Improved Visibility.','Faster Coordination.']
+];
+function drawSupers(t){
+  for(const [t0,t1,l1,l2] of SUPERS){
+    const a=Math.min(P(t,t0-0.28,t0+0.12),1-P(t,t1-0.22,t1+0.10));
+    if(a<=0.002) continue;
+    X.save(); X.globalAlpha=a; scrim(a);
+    X.textBaseline='alphabetic'; X.fillStyle='#fff'; setType(84,800,-1);
+    X.globalAlpha=a; X.fillText(l1,150,806+rise(P(t,t0-0.28,t0+0.62),36));
+    X.fillText(l2,150,902+rise(P(t,t0-0.18,t0+0.72),36));
+    X.restore();
+  }
+}
+
+/* ecosystem graphic, drawn sharp over shot 19 */
+const ENODES=[[300,360,0],[320,760,0],[590,300,1],[560,650,1],[1030,380,1],[1150,740,1],
+ [430,470,2],[720,860,2],[880,260,2],[1270,280,2],[1360,570,2],[700,500,2],[960,880,2],[1450,800,2],
+ [470,580,3],[790,380,3],[900,620,3],[1180,500,3],[1270,860,3],[600,790,3],[1420,400,3],
+ [380,850,4],[1000,560,4],[1340,700,4],[650,220,4]];
+const ETY=[['PLANTS','#5b9dff'],['PARTS DISTRIBUTION CENTRES','#3ae0ff'],
+           ['DEALERSHIPS','#9fb2cc'],['SERVICE WORKSHOPS','#2fe3a0'],['RSA TEAMS','#ffb020']];
+const ELINKS=[[2,15],[4,17],[5,18],[3,14],[22,16]];
+function drawEco(t){
+  const T0=48.60,T1=54.60;
+  const a=Math.min(P(t,T0+0.1,T0+0.8),1-P(t,T1-0.6,T1));
+  if(a<=0.002) return;
+  const lt=t-T0;
+  X.save(); X.globalAlpha=a;
+  X.fillStyle='rgba(4,7,15,0.55)'; X.fillRect(0,0,W,H);
+  ELINKS.forEach(([ia,ib],i)=>{
+    const A=ENODES[ia],B=ENODES[ib];
+    const mx=(A[0]+B[0])/2, my=(A[1]+B[1])/2-Math.abs(B[0]-A[0])*0.22-40;
+    const p=eo(P(lt,2.0+i*0.28,3.1+i*0.28));
+    X.save(); X.strokeStyle='rgba(58,224,255,0.22)'; X.lineWidth=2;
+    X.beginPath(); X.moveTo(A[0],A[1]); X.quadraticCurveTo(mx,my,B[0],B[1]); X.stroke();
+    X.restore();
+    if(p>0){
+      X.save(); X.strokeStyle='rgba(58,224,255,0.95)'; X.lineWidth=2.8; X.lineCap='round';
+      X.beginPath(); X.moveTo(A[0],A[1]);
+      const m=1-p, cx=lerp(A[0],mx,p), cy=lerp(A[1],my,p);
+      const ex=m*m*A[0]+2*m*p*mx+p*p*B[0], ey=m*m*A[1]+2*m*p*my+p*p*B[1];
+      X.quadraticCurveTo(cx,cy,ex,ey); X.stroke();
+      blob(X,ex,ey,16,'rgba(58,224,255,1)',0.9*(p<1?1:0));
+      X.restore();
+    }
+  });
+  ENODES.forEach(([x,y,ti],i)=>{
+    const s=0.3+((i*37)%25)*0.045, na=P(lt,s,s+0.5);
+    if(na<=0) return;
+    const c=ETY[ti][1], k=lerp(0.5,1,eo5(na));
+    X.save(); X.globalAlpha=a*na*(ti===2?0.72:0.98); X.translate(x,y); X.scale(k,k);
+    X.strokeStyle=c; X.lineWidth=2.6; X.fillStyle='rgba(7,16,31,0.9)';
+    X.beginPath();
+    if(ti===0) X.rect(-11,-11,22,22);
+    else if(ti===1){X.moveTo(0,-13);X.lineTo(13,0);X.lineTo(0,13);X.lineTo(-13,0);X.closePath();}
+    else if(ti===2) X.arc(0,0,8,0,TAU);
+    else if(ti===3) X.rect(-10,-10,20,20);
+    else {X.moveTo(0,-13);X.lineTo(12,8);X.lineTo(-12,8);X.closePath();}
+    X.fill(); X.stroke(); X.restore();
+  });
+  X.textBaseline='alphabetic'; X.fillStyle='#3ae0ff';
+  setType(22,700,7); X.globalAlpha=a*P(lt,0.4,1.1);
+  X.fillText('SELECTIVE CORRIDORS · CRITICAL LINKS ONLY',150,158);
+  X.globalAlpha=a*P(lt,1.1,1.8);
+  let lx=150; setType(19,600,3);
+  ETY.forEach(([n,c])=>{
+    X.fillStyle=c; X.beginPath(); X.arc(lx,972,7,0,TAU); X.fill();
+    X.fillStyle='#b9c6dc'; X.fillText(n,lx+20,979);
+    lx+=X.measureText(n).width+96;
+  });
+  X.restore();
+}
+
+function drawEnd(t){
+  const F=57.75, a=P(t,F,F+0.5);
+  if(a<=0.002) return;
+  X.save(); X.globalAlpha=a; X.textAlign='center'; X.textBaseline='alphabetic';
+  X.fillStyle='#fff'; setType(56,700,0);
+  X.globalAlpha=a*P(t,F+0.15,F+0.8);
+  X.fillText('Drone Services for Smarter Customer Support',960,486+rise(P(t,F+0.15,F+1.1),18));
+  X.globalAlpha=a; X.fillStyle='#3ae0ff';
+  const ew=lerp(0,420,eo(P(t,F+0.5,F+1.4)));
+  X.fillRect(960-ew/2,540,ew,2);
+  X.globalAlpha=a*P(t,F+0.7,F+1.35); X.fillStyle='#b9c6dc'; setType(30,400,2);
+  X.fillText('Exploring New Possibilities for Customer Experience',960,606);
+  X.globalAlpha=a*P(t,F+1.05,F+1.7); X.fillStyle='#fff'; setType(38,700,1);
+  X.fillText('Maruti Suzuki',960,726+rise(P(t,F+1.05,F+1.8),14));
+  X.restore(); X.textAlign='left';
+}
+
+/* =====================================================================
+   seek
+   ===================================================================== */
+const XFADE={5.30:0.40, 13.25:0.40, 21.60:0.40, 32.85:0.40, 41.85:0.45, 48.60:0.50, 54.60:0.45, 57.75:0.45};
+function shotAt(t){
+  for(let i=0;i<SHOTS.length;i++) if(t>=SHOTS[i].t0&&t<SHOTS[i].t1) return i;
+  return t<0?0:SHOTS.length-1;
+}
+function seek(t){
+  const i=shotAt(t), sh=SHOTS[i];
+  S.save(); S.setTransform(1,0,0,1,0,0); S.globalAlpha=1;
+  S.fillStyle='#000'; S.fillRect(0,0,W,H);
+  const xf=XFADE[sh.t0]||0;
+  const into=t-sh.t0;
+  if(xf>0 && into<xf && i>0){
+    const prev=SHOTS[i-1];
+    S.save(); prev.draw(S,t-prev.t0,t); S.restore();
+    S2.save(); S2.setTransform(1,0,0,1,0,0); S2.globalAlpha=1;
+    S2.fillStyle='#000'; S2.fillRect(0,0,W,H);
+    sh.draw(S2,into,t); S2.restore();
+    S.globalAlpha=clamp(into/xf,0,1); S.drawImage(SC2,0,0); S.globalAlpha=1;
+  } else {
+    sh.draw(S,into,t);
+  }
+  S.restore();
+
+  post(t);
+  drawTitle(t); drawSupers(t); drawEco(t); drawEnd(t);
+  vignetteGrain(t);
+
+  const fade=Math.min(P(t,0,1.0),1-P(t,59.55,60.0));
+  if(fade<1){ X.save(); X.globalAlpha=1-fade; X.fillStyle='#000'; X.fillRect(0,0,W,H); X.restore(); }
+}
+window.seek=seek; window.__ready=true; seek(0);
+</script></body></html>

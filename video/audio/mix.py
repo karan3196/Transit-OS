@@ -120,7 +120,7 @@ def tick():
     n=idx(0.05); x=fftfilt(rng.standard_normal(n),lo=2600,hi=8000)
     return x/max(np.abs(x).max(),1e-9)*np.linspace(1,0,n)**3
 
-CUTS=[5.0,13.0,21.5,32.5,41.5,48.5,54.5]
+CUTS=[5.30,13.25,21.60,32.85,41.85,48.60,54.60]
 for c in CUTS:
     place(sfx,whoosh(0.85,220,3000,rev=True),c-0.7,0.11)   # rise into the cut
     place(sfx,whoosh(0.55,180,1800),c,0.09)                # settle after it
@@ -131,16 +131,15 @@ for s0,s1,txt in [(30.90,32.45,''),(40.10,41.45,''),(46.90,48.45,'')]:
     place(sfx,sub(52,0.75,4.2),s0,0.30)
     place(sfx,whoosh(1.5,900,7000),s0,0.05)
 
-BLIPS=[2.0,5.95,6.57,7.19,7.81,14.0,15.6,17.9,19.3,23.2,28.05,28.3,
-       33.3,34.2,34.62,35.04,37.2,38.5,39.5,42.1,44.6,45.1,45.5,45.9,
-       51.0,51.28,51.56,51.84,52.12,55.3]
+# sparse accents only - the photographic cut has no HUD to tick against
+BLIPS=[16.9,23.05,30.95,40.15,51.0,51.28,51.56,51.84,52.12]
 for i,b in enumerate(BLIPS):
     place(sfx,blip(980+((i*7)%5)*110),b,0.055)
 
 # light 100bpm tick bed through the solution half
-for k in range(int(21.5/0.6),int(54.5/0.6)):
+for k in range(int(21.6/0.6),int(48.6/0.6)):
     tt=k*0.6
-    if 21.5<=tt<54.5: place(sfx,tick(),tt,0.020 if k%2 else 0.033)
+    if 21.6<=tt<48.6: place(sfx,tick(),tt,0.013 if k%2 else 0.022)
 
 # rotor hum while a drone is in shot
 def hum(dur,f=176):
@@ -153,7 +152,7 @@ def hum(dur,f=176):
     e[:na]*=np.linspace(0,1,na)**2; e[-nr:]*=np.linspace(1,0,nr)**2
     e*=0.75+0.25*np.sin(2*np.pi*0.6*tt)
     return x*e
-for (a,b,f) in [(22.4,29.4,176),(34.4,39.9,168),(42.5,45.3,184),(54.6,57.5,172)]:
+for (a,b,f) in [(23.0,32.3,176),(38.6,41.4,170),(44.4,46.8,184),(54.8,57.2,168)]:
     place(sfx,hum(b-a,f),a,0.050)
 
 # end-frame resolve

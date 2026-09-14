@@ -1,0 +1,142 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Overlay</title>
+<style>
+  html,body{margin:0;padding:0;background:transparent;}
+  #stage{width:1920px;height:1080px;position:relative;overflow:hidden;}
+  svg{display:block;font-family:'Inter','Liberation Sans',sans-serif;}
+</style></head><body>
+<div id="stage"><svg id="root" width="1920" height="1080" viewBox="0 0 1920 1080"></svg></div>
+<script>
+const NS='http://www.w3.org/2000/svg', W=1920, H=1080;
+const svg=document.getElementById('root');
+function E(t,a,p){const n=document.createElementNS(NS,t);for(const k in a||{})n.setAttribute(k,a[k]);(p||svg).appendChild(n);return n;}
+function G(p,a){return E('g',a||{},p);}
+function T(p,s,a){const n=E('text',a||{},p);n.textContent=s;return n;}
+const clamp=(v,a,b)=>v<a?a:v>b?b:v, lerp=(a,b,p)=>a+(b-a)*p;
+const P=(t,a,b)=>clamp((t-a)/((b-a)||1e-6),0,1);
+const eo=p=>1-Math.pow(1-p,3), eo5=p=>1-Math.pow(1-p,5);
+const C={cyan:'#3ae0ff',blue:'#5b9dff',mut:'#b9c6dc',white:'#ffffff'};
+E('style',{},svg).textContent="text{dominant-baseline:middle}";
+
+/* ---------- soft scrim so type always reads over footage ---------- */
+const defs=E('defs',{},svg);
+const sg=E('linearGradient',{id:'sc',x1:0,y1:0,x2:0,y2:1},defs);
+E('stop',{offset:'0%','stop-color':'#000','stop-opacity':0},sg);
+E('stop',{offset:'100%','stop-color':'#000','stop-opacity':0.55},sg);
+
+/* ---------- TITLE (over shot 01) ---------- */
+const title=G(svg,{opacity:0});
+const tScrim=E('rect',{x:0,y:H-620,width:W,height:620,fill:'url(#sc)',opacity:0.85},title);
+const tk=T(title,'A CONCEPT FILM',{x:150,y:706,'font-size':22,'font-weight':600,'letter-spacing':12,fill:C.cyan});
+const t1=T(title,'WHEN EVERY MINUTE',{x:150,y:800,'font-size':96,'font-weight':800,'letter-spacing':-1,fill:C.white});
+const t2=T(title,'MATTERS',{x:150,y:900,'font-size':96,'font-weight':800,'letter-spacing':-1,fill:C.white});
+const tr=E('rect',{x:150,y:952,width:0,height:3,fill:C.cyan},title);
+
+/* ---------- SUPERS ---------- */
+function makeSuper(txt){
+  const g=G(svg,{opacity:0});
+  E('rect',{x:0,y:H-560,width:W,height:560,fill:'url(#sc)',opacity:0.8},g);
+  const words=txt.split(' ');
+  const half=Math.ceil(words.length/2);
+  const l1=T(g,words.slice(0,half).join(' '),{x:150,y:806,'font-size':84,'font-weight':800,'letter-spacing':-1,fill:C.white});
+  const l2=T(g,words.slice(half).join(' '),{x:150,y:902,'font-size':84,'font-weight':800,'letter-spacing':-1,fill:C.white});
+  return {g,l1,l2};
+}
+const SUPERS=[
+  {t0:30.90,t1:32.45,el:makeSuper('Faster Parts. Faster Repairs.')},
+  {t0:40.10,t1:41.45,el:makeSuper('Assess First. Respond Better.')},
+  {t0:46.90,t1:48.45,el:makeSuper('Improved Visibility. Faster Coordination.')}
+];
+
+/* ---------- ECOSYSTEM (over the dusk aerial plate) ---------- */
+const eco=G(svg,{opacity:0});
+E('rect',{x:0,y:0,width:W,height:H,fill:'#04070f',opacity:0.62},eco);
+const NODES=[[300,360,0],[320,760,0],[590,300,1],[560,650,1],[1030,380,1],[1150,740,1],
+ [430,470,2],[720,860,2],[880,260,2],[1270,280,2],[1360,570,2],[700,500,2],[960,880,2],[1450,800,2],
+ [470,580,3],[790,380,3],[900,620,3],[1180,500,3],[1270,860,3],[600,790,3],[1420,400,3],
+ [380,850,4],[1000,560,4],[1340,700,4],[650,220,4]];
+const TY=[{n:'PLANTS',c:'#5b9dff'},{n:'PARTS DISTRIBUTION CENTRES',c:'#3ae0ff'},
+          {n:'DEALERSHIPS',c:'#8fa4c4'},{n:'SERVICE WORKSHOPS',c:'#2fe3a0'},{n:'RSA TEAMS',c:'#ffb020'}];
+const LINKS=[[2,15],[4,17],[5,18],[3,14],[22,16]];
+const nodeEls=NODES.map(([x,y,ti])=>{
+  const c=TY[ti].c, g=G(eco,{opacity:0,transform:`translate(${x},${y})`});
+  if(ti===0) E('rect',{x:-11,y:-11,width:22,height:22,fill:'#07101f',stroke:c,'stroke-width':2.6},g);
+  else if(ti===1) E('path',{d:'M0,-13 L13,0 L0,13 L-13,0 Z',fill:'#07101f',stroke:c,'stroke-width':2.6},g);
+  else if(ti===2) E('circle',{cx:0,cy:0,r:8,fill:'#07101f',stroke:c,'stroke-width':2.4},g);
+  else if(ti===3) E('rect',{x:-10,y:-10,width:20,height:20,rx:5,fill:'#07101f',stroke:c,'stroke-width':2.6},g);
+  else E('path',{d:'M0,-13 L12,8 L-12,8 Z',fill:'#07101f',stroke:c,'stroke-width':2.6,'stroke-linejoin':'round'},g);
+  return {g,x,y,ti};
+});
+const linkEls=LINKS.map(([a,b])=>{
+  const A=NODES[a],B=NODES[b];
+  const mx=(A[0]+B[0])/2, my=(A[1]+B[1])/2-Math.abs(B[0]-A[0])*0.22-40;
+  const d=`M${A[0]},${A[1]} Q${mx},${my} ${B[0]},${B[1]}`;
+  E('path',{d,fill:'none',stroke:C.cyan,'stroke-width':2,opacity:0.22},eco);
+  const ln=E('path',{d,fill:'none',stroke:C.cyan,'stroke-width':2.8,'stroke-linecap':'round'},eco);
+  const L=ln.getTotalLength(); ln.setAttribute('stroke-dasharray',L);
+  return {ln,L};
+});
+const ecoHead=T(eco,'SELECTIVE CORRIDORS · CRITICAL LINKS ONLY',{x:150,y:150,'font-size':22,'font-weight':700,'letter-spacing':7,fill:C.cyan});
+const leg=G(eco,{opacity:0,transform:'translate(150,978)'});
+let lx=0; TY.forEach(t=>{const g=G(leg,{transform:`translate(${lx},0)`});
+  E('circle',{cx:0,cy:0,r:7,fill:t.c},g);
+  T(g,t.n,{x:20,y:1,'font-size':19,'font-weight':600,'letter-spacing':3,fill:C.mut}); lx+=t.n.length*13.2+80;});
+
+/* ---------- END FRAME ---------- */
+const end=G(svg,{opacity:0});
+E('rect',{x:0,y:0,width:W,height:H,fill:'#05070c'},end);
+const e1=T(end,'Drone Services for Smarter Customer Support',{x:960,y:474,'font-size':56,'font-weight':700,'text-anchor':'middle',fill:C.white});
+const er=E('rect',{x:960,y:540,width:0,height:2,fill:C.cyan},end);
+const e2=T(end,'Exploring New Possibilities for Customer Experience',{x:960,y:596,'font-size':30,'font-weight':400,'letter-spacing':2,'text-anchor':'middle',fill:C.mut});
+const e3=T(end,'Maruti Suzuki',{x:960,y:716,'font-size':38,'font-weight':700,'text-anchor':'middle',fill:C.white});
+
+function seek(t){
+  /* title */
+  const ta=Math.min(P(t,0.6,1.3),1-P(t,4.2,4.9));
+  title.setAttribute('opacity',ta.toFixed(3));
+  tk.setAttribute('opacity',P(t,0.7,1.4));
+  [[t1,1.0],[t2,1.16]].forEach(([n,s])=>{
+    n.setAttribute('opacity',P(t,s,s+0.6));
+    n.setAttribute('transform',`translate(0,${lerp(40,0,eo5(P(t,s,s+1.2))).toFixed(2)})`);
+  });
+  const rw=lerp(0,260,eo(P(t,1.8,2.8))); tr.setAttribute('width',rw);
+
+  /* supers */
+  SUPERS.forEach(s=>{
+    const a=Math.min(P(t,s.t0-0.30,s.t0+0.10),1-P(t,s.t1-0.25,s.t1+0.10));
+    s.el.g.setAttribute('opacity',a.toFixed(3));
+    [[s.el.l1,0],[s.el.l2,0.10]].forEach(([n,d])=>
+      n.setAttribute('transform',`translate(0,${lerp(34,0,eo5(P(t,s.t0-0.3+d,s.t0+0.7+d))).toFixed(2)})`));
+  });
+
+  /* ecosystem */
+  const E0=48.60,E1=54.60;
+  const ea=Math.min(P(t,E0,E0+0.7),1-P(t,E1-0.6,E1));
+  eco.setAttribute('opacity',ea.toFixed(3));
+  const lt=t-E0;
+  nodeEls.forEach((n,i)=>{
+    const s=0.35+((i*37)%25)*0.045, a=P(lt,s,s+0.5);
+    n.g.setAttribute('opacity',(a*(n.ti===2?0.72:0.96)).toFixed(3));
+    n.g.setAttribute('transform',`translate(${n.x},${n.y}) scale(${lerp(0.5,1,eo5(a)).toFixed(3)})`);
+  });
+  linkEls.forEach((l,i)=>{
+    const s=2.4+i*0.30;
+    l.ln.setAttribute('stroke-dashoffset',(l.L*(1-eo(P(lt,s,s+1.1)))).toFixed(1));
+    l.ln.setAttribute('opacity',P(lt,s,s+0.3).toFixed(3));
+  });
+  ecoHead.setAttribute('opacity',P(lt,0.5,1.2).toFixed(3));
+  leg.setAttribute('opacity',(0.95*P(lt,1.2,1.9)).toFixed(3));
+
+  /* end frame */
+  const F0=57.75;
+  end.setAttribute('opacity',P(t,F0,F0+0.5).toFixed(3));
+  e1.setAttribute('opacity',P(t,F0+0.15,F0+0.75));
+  e1.setAttribute('transform',`translate(0,${lerp(16,0,eo(P(t,F0+0.15,F0+1.0))).toFixed(2)})`);
+  const ew=lerp(0,420,eo(P(t,F0+0.5,F0+1.4)));
+  er.setAttribute('x',960-ew/2); er.setAttribute('width',ew);
+  e2.setAttribute('opacity',0.95*P(t,F0+0.7,F0+1.3));
+  e3.setAttribute('opacity',P(t,F0+1.05,F0+1.7));
+  e3.setAttribute('transform',`translate(0,${lerp(12,0,eo(P(t,F0+1.05,F0+1.8))).toFixed(2)})`);
+}
+window.seek=seek; window.__ready=true; seek(0);
+</script></body></html>
