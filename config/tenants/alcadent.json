@@ -1,0 +1,66 @@
+{
+  "$comment": "Onboarding profile for the Alcadent pilot. Cowork writes files here; the repo is the shared state (CLAUDE.md section 8). Applying this is configuration, not a deploy.",
+  "slug": "alcadent",
+  "name": "Alcadent India",
+  "vertical": "dental_clinic",
+  "plan": "growth",
+  "timezone": "Asia/Kolkata",
+  "locale": "en-IN",
+  "business": {
+    "legal_name": "Alcadent India",
+    "tagline": "Kids & Adult Dentistry",
+    "lead_clinician": "Dr. Anukriti Gupta, Chief Pediatric Dental Surgeon",
+    "experience_years": 14,
+    "address": "F-49, First Floor, Elan Miracle Mall, Sector 84, Gurugram 122004",
+    "whatsapp": "+919889885908",
+    "highlights": [
+      "Painless injection technique",
+      "Conscious sedation for anxious children",
+      "Open 7 days"
+    ],
+    "never_claim": [
+      "guaranteed outcomes",
+      "best in Gurugram style superlatives",
+      "unconfirmed prices or treatment durations"
+    ]
+  },
+  "hours": {
+    "mon": ["10:00", "20:00"],
+    "tue": ["10:00", "20:00"],
+    "wed": ["10:00", "20:00"],
+    "thu": ["10:00", "20:00"],
+    "fri": ["10:00", "20:00"],
+    "sat": ["10:00", "20:00"],
+    "sun": ["11:00", "17:00"]
+  },
+  "brand": {
+    "status": "derived_from_instagram_unconfirmed",
+    "ink": "#14442B",
+    "primary": "#2E7D4F",
+    "surface": "#EDF2E6",
+    "cream": "#FAF7EF",
+    "accent": "#D08C2E",
+    "body": "#3C5344",
+    "heading_font": "Plus Jakarta Sans",
+    "accent_font": "Caveat",
+    "sizes": { "feed": "1080x1350", "story": "1080x1920" },
+    "voice": "Warm, plain, parent to parent. Short sentences. No fear-mongering, no exclamation stacking, no emoji in headlines. Hindi-English mixing allowed in captions, not headlines."
+  },
+  "channels": {
+    "whatsapp": { "enabled": true, "phone_number_id": "DEV_TEST_NUMBER" },
+    "webchat": { "enabled": true, "widget_key": "alcadent" },
+    "instagram": { "enabled": false },
+    "voice": { "enabled": false }
+  },
+  "limits": {
+    "ai_conversations_per_month": 2000,
+    "template_messages_per_month": 500,
+    "voice_minutes_per_month": 0
+  },
+  "open_items": [
+    "Brand kit awaiting confirmation from the clinic; replace hex values and add official logo files.",
+    "Confirm whether 98898 85908 can move to the Cloud API without losing the WhatsApp Business app, or use a new number for the pilot.",
+    "Pilot agreement, data processing terms and patient-data ownership clause not yet in place.",
+    "Pilot price and success metrics undefined."
+  ]
+}
