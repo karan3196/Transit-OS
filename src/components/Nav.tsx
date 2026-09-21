@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { signOut } from '@/app/login/actions';
 
 const SECTIONS: { label: string; links: { href: string; text: string }[] }[] = [
   {
@@ -30,7 +31,19 @@ const SECTIONS: { label: string; links: { href: string; text: string }[] }[] = [
   },
 ];
 
-export function Nav({ needsHuman }: { needsHuman: number }) {
+export function Nav({
+  needsHuman,
+  email,
+  tenantName,
+  role,
+  demo,
+}: {
+  needsHuman: number;
+  email: string | null;
+  tenantName: string;
+  role: string;
+  demo: boolean;
+}) {
   const pathname = usePathname();
 
   return (
@@ -66,6 +79,24 @@ export function Nav({ needsHuman }: { needsHuman: number }) {
           })}
         </div>
       ))}
+
+      <div className="usercard">
+        <span className="stack" style={{ gap: 2 }}>
+          <span className="who">{email ?? 'Signed in'}</span>
+          <span className="small faint">
+            {tenantName} · {role}
+          </span>
+        </span>
+        {demo ? (
+          <span className="pill amber">Demo mode</span>
+        ) : (
+          <form action={signOut}>
+            <button className="linkbtn" type="submit">
+              Sign out
+            </button>
+          </form>
+        )}
+      </div>
     </nav>
   );
 }

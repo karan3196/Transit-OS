@@ -23,6 +23,9 @@ export interface BusinessFacts {
   highlights?: string[];
   hoursSummary: string;
   timezone: string;
+  /** From tenant_config.brand — the brand kit is configuration, not per-agent copy. */
+  brandVoice?: string;
+  contentSizes?: string;
 }
 
 export interface AgentRecord {

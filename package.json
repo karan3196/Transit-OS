@@ -2,8 +2,11 @@
   "name": "karyalaya",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "description": "Multi-tenant AI agent platform for small offline businesses.",
-  "engines": { "node": ">=20.9.0" },
+  "engines": {
+    "node": ">=20.9.0"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -13,7 +16,9 @@
     "test:watch": "vitest",
     "db:start": "supabase start",
     "db:reset": "supabase db reset",
-    "db:diff": "supabase db diff"
+    "db:diff": "supabase db diff",
+    "onboard": "node scripts/onboard.mts",
+    "seed:build": "node scripts/onboard.mts alcadent --out supabase/seed.sql"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.68.0",

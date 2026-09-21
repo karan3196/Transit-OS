@@ -46,6 +46,9 @@ export const demoBusiness: BusinessFacts = {
   ],
   hoursSummary,
   timezone: 'Asia/Kolkata',
+  brandVoice:
+    'Warm, plain, parent to parent. Short sentences. No fear-mongering, no exclamation stacking, no emoji in headlines. Hindi-English mixing allowed in captions, not headlines.',
+  contentSizes: '1080x1350 for feed, 1080x1920 for story',
 };
 
 export const demoServices: ServiceSummary[] = [

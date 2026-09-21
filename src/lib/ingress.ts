@@ -177,6 +177,7 @@ async function loadTenant(scope: TenantScope, tenantId: string): Promise<LoadedT
 
   const hours = (config.hours ?? {}) as OpeningHours;
   const business = (config.business ?? {}) as Record<string, any>;
+  const brand = (config.brand ?? {}) as Record<string, any>;
 
   return {
     timezone: tenantRow.timezone ?? 'Asia/Kolkata',
@@ -191,6 +192,12 @@ async function loadTenant(scope: TenantScope, tenantId: string): Promise<LoadedT
       highlights: business.highlights,
       hoursSummary: summariseHours(hours),
       timezone: tenantRow.timezone ?? 'Asia/Kolkata',
+      brandVoice: brand.voice,
+      contentSizes: brand.sizes
+        ? Object.entries(brand.sizes as Record<string, string>)
+            .map(([name, size]) => `${size} for ${name}`)
+            .join(', ')
+        : undefined,
     },
   };
 }

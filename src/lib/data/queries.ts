@@ -7,6 +7,7 @@
  * tenant isolation on every page in the portal.
  */
 import { isDemoMode } from '@/lib/env';
+import { getMemberships } from '@/lib/auth';
 import { createUserClient } from '@/lib/supabase/server';
 import {
   demoAgents,
@@ -15,7 +16,6 @@ import {
   demoCustomers,
   demoKnowledge,
   demoServices,
-  demoTenant,
   demoUsage,
   type DemoAgentRow,
   type DemoBooking,
@@ -31,27 +31,25 @@ export interface ActiveTenant {
   plan: 'starter' | 'growth' | 'pro';
   status: string;
   timezone: string;
+  role: 'owner' | 'manager' | 'staff';
   demo: boolean;
 }
 
 export async function getActiveTenant(): Promise<ActiveTenant | null> {
-  if (isDemoMode()) {
-    return { ...demoTenant, demo: true };
-  }
+  const memberships = await getMemberships();
+  const membership = memberships[0];
+  if (!membership) return null;
 
-  const supabase = await createUserClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-
-  // RLS limits this to the caller's own memberships.
-  const { data } = await supabase
-    .from('tenants')
-    .select('id, name, slug, plan, status, timezone')
-    .limit(1)
-    .maybeSingle();
-
-  if (!data) return null;
-  return { ...(data as Omit<ActiveTenant, 'demo'>), demo: false };
+  return {
+    id: membership.tenantId,
+    name: membership.name,
+    slug: membership.slug,
+    plan: membership.plan,
+    status: membership.status,
+    timezone: membership.timezone,
+    role: membership.role,
+    demo: isDemoMode(),
+  };
 }
 
 export interface InboxItem {

@@ -40,6 +40,8 @@ export function buildSystemPrompt(ctx: AgentContext): string {
     address: business.address ?? '',
     whatsapp: business.whatsapp ?? '',
     hours_summary: business.hoursSummary,
+    brand_voice: business.brandVoice ?? '',
+    content_sizes: business.contentSizes ?? '',
     services_summary: summariseServices(ctx.services),
     customer_name: ctx.customerName ?? '',
     today: new Date().toLocaleDateString('en-IN', { timeZone: business.timezone }),

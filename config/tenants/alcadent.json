@@ -1,29 +1,30 @@
 {
-  "$comment": "Onboarding profile for the Alcadent pilot. Cowork writes files here; the repo is the shared state (CLAUDE.md section 8). Applying this is configuration, not a deploy.",
+  "$comment": "Complete onboarding profile for the Alcadent pilot. This file is the source of truth for the tenant: `npm run onboard -- alcadent` provisions it, and `npm run seed:build` regenerates supabase/seed.sql from it. Cowork writes files here; the repo is the shared state (CLAUDE.md section 8).",
+
+  "id": "11111111-1111-4111-8111-111111111111",
   "slug": "alcadent",
   "name": "Alcadent India",
   "vertical": "dental_clinic",
   "plan": "growth",
+  "status": "active",
   "timezone": "Asia/Kolkata",
   "locale": "en-IN",
+
   "business": {
     "legal_name": "Alcadent India",
     "tagline": "Kids & Adult Dentistry",
     "lead_clinician": "Dr. Anukriti Gupta, Chief Pediatric Dental Surgeon",
     "experience_years": 14,
     "address": "F-49, First Floor, Elan Miracle Mall, Sector 84, Gurugram 122004",
+    "maps_url": "https://maps.google.com/?q=Elan+Miracle+Mall+Sector+84+Gurugram",
     "whatsapp": "+919889885908",
     "highlights": [
       "Painless injection technique",
       "Conscious sedation for anxious children",
       "Open 7 days"
-    ],
-    "never_claim": [
-      "guaranteed outcomes",
-      "best in Gurugram style superlatives",
-      "unconfirmed prices or treatment durations"
     ]
   },
+
   "hours": {
     "mon": ["10:00", "20:00"],
     "tue": ["10:00", "20:00"],
@@ -33,6 +34,7 @@
     "sat": ["10:00", "20:00"],
     "sun": ["11:00", "17:00"]
   },
+
   "brand": {
     "status": "derived_from_instagram_unconfirmed",
     "ink": "#14442B",
@@ -46,17 +48,124 @@
     "sizes": { "feed": "1080x1350", "story": "1080x1920" },
     "voice": "Warm, plain, parent to parent. Short sentences. No fear-mongering, no exclamation stacking, no emoji in headlines. Hindi-English mixing allowed in captions, not headlines."
   },
+
   "channels": {
     "whatsapp": { "enabled": true, "phone_number_id": "DEV_TEST_NUMBER" },
     "webchat": { "enabled": true, "widget_key": "alcadent" },
     "instagram": { "enabled": false },
     "voice": { "enabled": false }
   },
+
+  "escalation": {
+    "inbox_url": "/inbox",
+    "notify_roles": ["owner", "manager"],
+    "office_hours_only": false
+  },
+
   "limits": {
     "ai_conversations_per_month": 2000,
     "template_messages_per_month": 500,
     "voice_minutes_per_month": 0
   },
+
+  "resources": [
+    { "slug": "chair-1", "name": "Chair 1" },
+    { "slug": "chair-2", "name": "Chair 2" }
+  ],
+
+  "services": [
+    {
+      "slug": "consultation",
+      "name": "Consultation",
+      "description": "First visit, examination and treatment plan discussion.",
+      "duration_minutes": 30,
+      "price_paise": 50000,
+      "price_is_estimate": true,
+      "recall_months": 6
+    },
+    {
+      "slug": "cleaning",
+      "name": "Scaling & polishing",
+      "description": "Routine cleaning for adults and older children.",
+      "duration_minutes": 45,
+      "price_paise": 150000,
+      "price_is_estimate": true,
+      "recall_months": 6
+    },
+    {
+      "slug": "kids-checkup",
+      "name": "Kids check-up",
+      "description": "Child-friendly examination with fluoride application if needed.",
+      "duration_minutes": 30,
+      "price_paise": 80000,
+      "price_is_estimate": true,
+      "recall_months": 6
+    },
+    {
+      "slug": "rct-sitting",
+      "name": "Root canal sitting",
+      "description": "Follow-up sitting for an in-progress root canal.",
+      "duration_minutes": 60,
+      "price_paise": null,
+      "price_is_estimate": true,
+      "recall_months": null
+    }
+  ],
+
+  "knowledge": [
+    {
+      "source": "clinic_facts",
+      "title": "Opening hours",
+      "content": "Alcadent India is open seven days a week. Monday to Saturday 10:00 to 20:00, Sunday 11:00 to 17:00. Walk-ins are accepted but an appointment is faster.",
+      "approved_by": "clinic"
+    },
+    {
+      "source": "clinic_facts",
+      "title": "Location and parking",
+      "content": "F-49, First Floor, Elan Miracle Mall, Sector 84, Gurugram 122004. Parking is available in the mall basement. The clinic is on the first floor, near the atrium lifts.",
+      "approved_by": "clinic"
+    },
+    {
+      "source": "clinic_facts",
+      "title": "Anxious children",
+      "content": "The clinic uses a painless injection technique and offers conscious sedation for children who are very anxious. Parents can stay with the child during the visit. A first visit is usually a short, friendly familiarisation appointment.",
+      "approved_by": "clinic"
+    },
+    {
+      "source": "oral_hygiene",
+      "title": "Brushing for children",
+      "content": "Children should brush twice a day with a pea-sized amount of fluoride toothpaste, with adult supervision until about age seven. Replace the brush every three months. Limit sugary drinks between meals.",
+      "approved_by": "clinic"
+    }
+  ],
+
+  "message_templates": [
+    {
+      "name": "recall_six_month",
+      "language": "en",
+      "category": "utility",
+      "body": "Hi {{1}}, it has been six months since your last visit to Alcadent. Would you like to book a check-up? Reply STOP to stop reminders.",
+      "variables": ["customer_name"]
+    },
+    {
+      "name": "appointment_reminder",
+      "language": "en",
+      "category": "utility",
+      "body": "Hi {{1}}, reminder of your appointment at Alcadent on {{2}}. Reply RESCHEDULE if you need a different time.",
+      "variables": ["customer_name", "appointment_time"]
+    }
+  ],
+
+  "agents": ["front-desk", "recall", "content-studio"],
+
+  "agent_variables": {
+    "business_name": "Alcadent India",
+    "tagline": "Kids & Adult Dentistry",
+    "content_approver": "Dr. Anukriti Gupta",
+    "never_claim": "guaranteed outcomes, \"best in Gurugram\" style superlatives, or any unconfirmed price or treatment duration",
+    "boundaries": "- You do not diagnose, do not interpret symptoms, x-rays or photographs, and do not recommend treatment. Those questions go to Dr. Anukriti Gupta — offer an appointment.\n- You do not quote a final price or a treatment duration. Prices given are indicative and confirmed at the clinic after examination.\n- No superlatives (\"best in Gurugram\"), no guaranteed outcomes.\n- General oral-hygiene information (brushing, flossing, sugar, routine check-up frequency) is fine."
+  },
+
   "open_items": [
     "Brand kit awaiting confirmation from the clinic; replace hex values and add official logo files.",
     "Confirm whether 98898 85908 can move to the Cloud API without losing the WhatsApp Business app, or use a new number for the pilot.",
