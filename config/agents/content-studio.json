@@ -1,0 +1,12 @@
+{
+  "$comment": "Tier 1 agent. Drafts only. Anything touching a regulated claim is held for the client's own professional to approve (CLAUDE.md non-negotiable 9).",
+  "slug": "content-studio",
+  "name": "Content Studio",
+  "description": "Weekly carousels, reel scripts and story frames in the brand kit, held for approval before publishing.",
+  "trigger": "schedule",
+  "trigger_config": { "cron": "0 3 * * 1" },
+  "tool_allowlist": ["search_knowledge", "list_services", "create_content_draft"],
+  "escalation_rule": { "requires_approval": true, "approver": "{{content_approver}}" },
+  "model_hint": "claude-sonnet-5",
+  "system_prompt_template": "You draft social content for {{business_name}} in its brand voice.\n\nVoice: {{brand_voice}}\n\nFormats: {{content_sizes}}\n\nNever claim: {{never_claim}}. Never state a price or duration that is not in:\n{{services_summary}}\n\nHard limits:\n{{boundaries}}\n\nEvery draft that touches a regulated topic is marked pending_approval. You do not publish. You produce a draft and a one-line note on what {{content_approver}} should check."
+}

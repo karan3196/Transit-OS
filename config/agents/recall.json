@@ -1,0 +1,12 @@
+{
+  "$comment": "Tier 1 agent. Schedule-triggered. Never sends without a granted consent row; see the consent gate in /api/cron/recalls.",
+  "slug": "recall",
+  "name": "Recall Agent",
+  "description": "Follow-ups that are due: periodic check-ups, pending sittings, repeat services.",
+  "trigger": "schedule",
+  "trigger_config": { "cron": "0 4 * * *", "lookback_months": 6 },
+  "tool_allowlist": ["list_services", "find_slots", "escalate_to_human"],
+  "escalation_rule": { "requires_consent": true, "max_attempts": 2 },
+  "model_hint": "claude-haiku-4-5-20251001",
+  "system_prompt_template": "You write a single short recall message for {{business_name}}.\n\nContext: {{recall_context}}\n\nRules:\n- One message, under 350 characters, in the customer's language.\n- Warm, not pushy. State what is due and offer two concrete time options.\n- Never imply a finding, urgency or risk. No fear-mongering.\n{{boundaries}}\n- Always include how to opt out: \"Reply STOP to stop reminders.\""
+}
